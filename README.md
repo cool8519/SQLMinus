@@ -30,9 +30,9 @@ JDK 1.5 이상
    1. SQLMinus.exe(jar)와 동일한 디렉토리에 JDBC Driver를 위치한다.
    2. SQLMinus.exe(jar)를 실행시키면 접근 가능한 DBMS 목록이 나오며, 필요한 접속정보를 입력하면 연결된다.
       SQLMinus의 인자값으로 ConnectionURL을 주게 되면, 간단히 계정정보만 입력하면 연결된다.
-      > 사용방법 확인 :
-         Windows> SQLMinus.exe -help
-         UNIX> java -jar SQLMinus.jar -help
+      > 사용방법 확인 :<br>
+        Windows> SQLMinus.exe -help <br>
+        UNIX> java -jar SQLMinus.jar -help
 
 ## Charset
 
@@ -68,10 +68,10 @@ JDK 1.5 이상
       현재 사용자의 Object 목록을 출력
    11. set (pagesize / heading / linesize / checksize / timing / time / scan / check / checkconn)
       SQL*Minus의 시스템 변수를 지정하거나 확인
-      * check 기능
-		check 옵션이 ON일 경우, 쿼리의 결과가 checksize보다 클 경우, 경고 메세지 출력
-      * checkconn 기능
- 		체크쿼리를 수행하여 connection이 정상인 지 확인하거나 유지
+> * check 기능 <br>
+    check 옵션이 ON일 경우, 쿼리의 결과가 checksize보다 크면 경고 메세지 출력
+>  * checkconn 기능 <br>
+    체크쿼리를 수행하여 connection이 정상인 지 확인하거나 유지
    12. column ( clear / format / heading / wrapped / truncated / on / off )
       Query 출력을 위한 컬럼 정보를 지정하거나 확인
    13. &
