@@ -169,6 +169,20 @@ public class RetainableConnection {
 		return stmt;
 	}
 
+	public QueryResult execute(String query) throws SQLException {
+		if(checkType == CheckType.PRE_REQUEST || checkType == CheckType.ALL) {
+			if(CheckThread.checkQuery(con, checkQuery)) {
+				resetThreadTimer();
+			}
+		}
+		QueryResult result = new QueryResult();
+		result.executeAndSet(query, stmt!=null?stmt:pstmt);
+        DebugLogger.logln("Executed " + (result.isSelect()?"Select":"Update") + " Query : \"" + query + "\"", DebugLogger.INFO);
+
+		resetThreadTimer();
+		return result;
+	}
+	
 	public ResultSet executeQuery(String query) throws SQLException {
 		if(checkType == CheckType.PRE_REQUEST || checkType == CheckType.ALL) {
 			if(CheckThread.checkQuery(con, checkQuery)) {
@@ -181,7 +195,7 @@ public class RetainableConnection {
 		} else if(pstmt != null) {
 			rs = pstmt.executeQuery(query);
 		}
-        DebugLogger.logln("Executed Query : \"" + query + "\"", DebugLogger.INFO);
+        DebugLogger.logln("Executed Select Query : \"" + query + "\"", DebugLogger.INFO);
 
 		resetThreadTimer();
 		return rs;
@@ -199,7 +213,7 @@ public class RetainableConnection {
 		} else if(pstmt != null) {
 			i = pstmt.executeUpdate(query);
 		}
-        DebugLogger.logln("Executed Update : \"" + query + "\"", DebugLogger.INFO);
+        DebugLogger.logln("Executed Update Query : \"" + query + "\"", DebugLogger.INFO);
 
         resetThreadTimer();
 		return i;

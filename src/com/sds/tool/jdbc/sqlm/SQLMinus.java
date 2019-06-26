@@ -29,6 +29,7 @@ import java.util.StringTokenizer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.sds.tool.jdbc.sqlm.util.QueryResult;
 import com.sds.tool.jdbc.sqlm.util.RetainableConnection;
 import com.sds.tool.jdbc.sqlm.util.Util;
 import com.sds.tool.util.DebugLogger;
@@ -43,7 +44,7 @@ public class SQLMinus {
     private static final String HEADING = "HEADING";
     private static final String WRAPPED = "WRAPPED";
     private static final String PRODUCT = "SQL*Minus";
-    private static final String VERSION = "1.2.0";
+    private static final String VERSION = "1.3.0";
     private static final String DEBUG_FILE = "./sqlm_dbg.log";
 
     private DBInfo dbinfo = new DBInfo();
@@ -56,6 +57,8 @@ public class SQLMinus {
     private String action = "";
     private String prev = "";
     private String scriptName = "";
+    private File currentDir = new File(".");
+    private StringBuilder cmdBuffer = new StringBuilder("");
     private long start = 0L;
     private int pageSize = 24;
     private int lineSize = 80;
@@ -71,6 +74,7 @@ public class SQLMinus {
     private boolean commitOnExit = true;
     private boolean loop = true;
     private boolean scriptOnStart = false;
+    private boolean scriptProcessing = false;
     private Hashtable<String,Properties> setCols = new Hashtable<String,Properties>();
     private Hashtable<String,String> defines = new Hashtable<String,String>();
     private List<Hashtable<String,Savepoint>> saves = new ArrayList<Hashtable<String,Savepoint>>();
@@ -101,9 +105,7 @@ public class SQLMinus {
 
         try {
 
-            String query = "";
             String tm = "";
-
 
             if(params.length > 0) {
 
@@ -181,17 +183,20 @@ public class SQLMinus {
             createConnection(true, false);
 
             while(loop) {
+            	cmdBuffer = new StringBuilder("");
                 if(scriptOnStart) {
                     cmd = "@" + scriptName;
                     action = getAction(cmd);
-                    scriptOnStart = false;
+                    loop = false;
                 } else {
                     cmd = "";
                     tm = (showTime)?(Util.getCurrentTime()+" "):"";
                     action = readSQL(tm + "SQL> ").trim();
                     ll.clear();
                 }
-                processAction(action, query, tm, ll);
+                if(action != null) {
+                	processAction(action, cmd, tm, ll);
+                }
             }
             
             DebugLogger.logln("End of command loop.", DebugLogger.WARN);
@@ -237,7 +242,7 @@ public class SQLMinus {
     }
 
 
-    private void createConnection(boolean first, boolean withCurrentInfo) throws Exception {
+    private void createConnection(boolean first, boolean withCurrentInfo) throws Exception{
 
         String dbname_temp = (dbname.length()>0)?dbname:dbinfo.getDBName();
         if(!first && !withCurrentInfo) {
@@ -307,7 +312,6 @@ public class SQLMinus {
 
 
     private void reconnect() throws Exception {
-        DebugLogger.logln("Reconnecting to DB.", DebugLogger.WARN);
         String isCont = "";
         boolean first = true;
         while(!isCont.equals("y") && !isCont.equals("n")) {
@@ -327,7 +331,7 @@ public class SQLMinus {
 
     private String readSQL(String prompt) {
 
-        StringBuffer buffer = new StringBuffer();
+        StringBuilder buffer = new StringBuilder();
         boolean start = true;
         boolean end = false;
         boolean tm = !(prompt.startsWith("SQL"));
@@ -353,18 +357,21 @@ public class SQLMinus {
             line_tmp = Util.readLine(prom, ToolLogger.INFO);
             line_org = line_tmp;
             line_tmp = line_tmp.trim();
+        	int end_sql = line_org.indexOf(";");
 
             if(!gotFirstLine) {
                 gotFirstLine = true;
-                if(line_tmp.endsWith(";")) {
-                    line_tmp = line_tmp.substring(0,line_tmp.length()-1);
-                    buffer.append(line_tmp);
-                    cont = false;
-                    end = true;
-                }
-                cmd = line_tmp;
 
+                cmd = line_tmp;
                 String action = getAction(cmd);
+                if(action.equals("comment")) {
+                	cmdBuffer.append(line_tmp + "\r\n");
+                	cont = false;
+                } else if(line_tmp.endsWith(";")) {
+                	buffer.append(line_org.substring(0,end_sql+1));
+                	cont = false;
+                	end = true;
+                }
 
                 if(action.equals("query") == false) {
                     return action;
@@ -372,19 +379,18 @@ public class SQLMinus {
             }
 
             if(cont) {
-                if(line_tmp.length() < 1) {
-                    return "blank";
-                } else if(line_tmp.endsWith(";")) {
-                    line_tmp = line_tmp.substring(0,line_tmp.length()-1);
-                    buffer.append(line_tmp);
+            	if(end_sql > -1) {            		
+            		if(!line_tmp.endsWith(";")) {
+            			logln("The SQL statement must end with a ';'.", ToolLogger.ERROR);
+            			return null;
+            		}
                     end = true;
-                } else {
-                    buffer.append(line_org);
                 }
+            	buffer.append(line_org);
             }
         }
 
-        cmd = buffer.toString();
+        cmd = buffer.toString().trim();
 
         return "query";
     }
@@ -392,29 +398,81 @@ public class SQLMinus {
 
     private String getAction(String command) {
 
-        if(command.trim().length() < 1) {
-            return "blank";
-        }
+    	String command_trim = command.trim();
 
-        StringTokenizer st = new StringTokenizer(command.trim(), " ");
+    	if(command_trim.indexOf("--") > -1 || command_trim.indexOf("/*") > -1) {
+        	int sl_s_idx = command_trim.indexOf("--");
+        	int ml_s_idx = command_trim.indexOf("/*");
+        	if(command_trim.startsWith("--")) {
+        		return "blank";
+        	} else if(command_trim.startsWith("/*")) {
+        		if(command_trim.endsWith("*/")) {
+        			// full-comment
+            		return "blank";
+        		} else {
+        			if(command_trim.indexOf("*/", ml_s_idx+2) > -1) {
+        				// full-comment & command
+        				return getAction(command_trim.substring(command_trim.indexOf("*/", ml_s_idx+2)+2));
+        			} else {
+        				// half-comment
+        				return "comment";
+        			}
+        		}
+        	} else if(sl_s_idx > -1 && ml_s_idx > -1) {
+        		if(sl_s_idx < ml_s_idx) {
+        			// command & sl_comment
+    				return getAction(command_trim.substring(0, sl_s_idx));
+        		} else {
+        			// command & ml_comment
+        			if(command_trim.indexOf("*/", ml_s_idx+2) > -1) {
+        				// command & full-comment [& command]
+        				return getAction(command_trim.substring(0, ml_s_idx));
+        			} else {
+        				// command & half-comment
+        				return "comment";
+        			}
+        		}
+        	} else if(sl_s_idx > -1) {
+        		// command & sl_comment
+				return getAction(command_trim.substring(0, sl_s_idx));
+        	} else {
+        		// command & ml_comment
+    			if(command_trim.indexOf("*/", ml_s_idx+2) > -1) {
+    				// command & full-comment [& command]
+    				return getAction(command_trim.substring(0, ml_s_idx));
+    			} else {
+    				// command & half-comment
+    				return "comment";
+    			}
+        	}
+        }
+                
+        if(command_trim.endsWith(";")) {
+        	command = command.substring(0, command.length()-1).trim();
+        	command_trim = command;
+        }
+        
+        StringTokenizer st = new StringTokenizer(command_trim, " ");
         String first = (st.countTokens()>0)?st.nextToken():"";
 
-        if(first.equalsIgnoreCase("help")) {
+        if(command_trim.length() < 1) {
+            return "blank";
+        } else if(first.equalsIgnoreCase("help")) {
             return "help";
         } else if(first.equalsIgnoreCase("exit") || Util.isIncludeEquals(first.toLowerCase(), "q", "uit") || Util.isIncludeEquals(first.toLowerCase(), "by", "e")) {
             return "exit";
         } else if(first.equalsIgnoreCase("ls")) {
             return "table";
-        } else if(first.equals("/*")) {
-            return "comment";
         } else if(first.startsWith("@")) {
             return "script";
         } else if(first.startsWith("!")) {
             return "external";
-        } else if(first.startsWith("--")) {
-            return "no";
         } else if(command.equals("/")) {
             return "previous";
+        } else if(first.equalsIgnoreCase("print")) {
+        	return "print";
+        } else if(first.equalsIgnoreCase("sleep")) {
+        	return "sleep";
         } else if(command.equalsIgnoreCase("info")) {
             return "info";
         } else if(Util.isIncludeEquals(command.toLowerCase(), "ver", "sion")) {
@@ -439,10 +497,11 @@ public class SQLMinus {
             return "column";
         } else if( first.equalsIgnoreCase("select") || first.equalsIgnoreCase("insert")   || first.equalsIgnoreCase("update")    || first.equalsIgnoreCase("delete")   ||
                    first.equalsIgnoreCase("create") || first.equalsIgnoreCase("alter")    || first.equalsIgnoreCase("drop")      || first.equalsIgnoreCase("truncate") ||
-                   first.equalsIgnoreCase("commit") || first.equalsIgnoreCase("rollback") || first.equalsIgnoreCase("savepoint") || (dbinfo.getType()==DBInfo.MYSQL && first.equalsIgnoreCase("show")) ) {
-            return "query";
+                   first.equalsIgnoreCase("commit") || first.equalsIgnoreCase("rollback") || first.equalsIgnoreCase("savepoint") || first.equalsIgnoreCase("with") ||
+                   (dbinfo.getType()==DBInfo.MYSQL && first.equalsIgnoreCase("show")) ) {
+        	return "query";        
         } else {
-            return "unknown";
+        	return "unknown";
         }
 
     }
@@ -456,73 +515,32 @@ public class SQLMinus {
         do {
             tm = (prompt.startsWith("DOC"))?"":(Util.getCurrentTime()+" ");
             line = Util.readLine(tm + "DOC> ", ToolLogger.INFO);
+            cmdBuffer.append(line);
             idx = line.indexOf("*/");
-        } while(idx < 0);
+            if(idx > -1) {
+            	break;
+            }
+        } while(true);
     }
-
 
     private List<String> readScript(File f) {
         List<String> l = new ArrayList<String>();
         FileReader fr = null;
         BufferedReader br = null;
-
         try {
             fr = new FileReader(f);
             br = new BufferedReader(fr);
-            StringTokenizer st = null;
-            StringBuffer buffer = new StringBuffer();
-            String first = null;
             String s = null;
-            boolean readingQuery = false;
-            boolean readingDoc = false;
-
             while((s = br.readLine()) != null) {
-                if(s.trim().length() > 0) {
-                    if(readingQuery) {
-                        buffer.append("\n" + s);
-                        if(s.endsWith(";")) {
-                            l.add(buffer.toString().substring(0,buffer.toString().length()-1));
-                            buffer = new StringBuffer();
-                            readingQuery = false;
-                        }
-                    } else if(readingDoc) {
-                        logln("DOC> " + s);
-                        if(s.endsWith("*/")) {
-                            readingDoc = false;
-                        }
-                    } else {
-                        st = new StringTokenizer(s, " ");
-                        first = (st.countTokens()>0)?st.nextToken():"";
-                        if( first.equalsIgnoreCase("select") || first.equalsIgnoreCase("insert")   || first.equalsIgnoreCase("update")    || first.equalsIgnoreCase("delete")   ||
-                            first.equalsIgnoreCase("create") || first.equalsIgnoreCase("alter")    || first.equalsIgnoreCase("drop")      || first.equalsIgnoreCase("truncate") ||
-                            first.equalsIgnoreCase("commit") || first.equalsIgnoreCase("rollback") || first.equalsIgnoreCase("savepoint") || (dbinfo.getType()==DBInfo.MYSQL && first.equalsIgnoreCase("show")) ) {
-                            if(s.endsWith(";")) {
-                                l.add(s.substring(0,s.length()-1));
-                            } else {
-                                buffer.append(s);
-                                readingQuery = true;
-                            }
-                        } else if(first.equalsIgnoreCase("/*")) {
-                            if(!s.endsWith("*/")) {
-                                logln("DOC> " + s);
-                                readingDoc = true;
-                            }
-                        } else {
-                            if(s.endsWith(";")) {
-                                s = s.substring(0,s.length()-1);
-                            }
-                            l.add(s);
-                            readingQuery = false;
-                        }
-                    }
-                }
+            	if(s.trim().equals("") == false) {
+            		l.add(s);
+            	}
             }
         } catch(IOException ioe) {
         } finally {
             if(br != null)
                 try { br.close(); } catch(Exception e) {}
         }
-
         return l;
     }
 
@@ -693,8 +711,6 @@ public class SQLMinus {
         }
 
         logln("");
-
-        //logln(Util.getColSizeString(colSize), Logger.INFO);
 
         int size = 0;
         int lst_idx = 0;
@@ -1202,7 +1218,7 @@ public class SQLMinus {
 
 
     public String getNumberTypeData(String data, String fm) {
-        StringBuffer result = new StringBuffer("");
+    	StringBuilder result = new StringBuilder("");
         String form = fm;
         String data_left = "";
         String data_right = "";
@@ -1275,7 +1291,7 @@ public class SQLMinus {
     public String editSQL(String buffer) {
 
         try {
-            StringBuffer result = new StringBuffer("");
+        	StringBuilder result = new StringBuilder("");
             String fname = ".sqlmedt.buf";
             String tmpdir = System.getProperty("java.io.tmpdir");
             String fs = System.getProperty("file.separator");
@@ -1443,9 +1459,11 @@ public class SQLMinus {
 
 
     public boolean doTransactionWork(String query) {
+		String strip_query = query.replaceAll("--.*", " ").replaceAll("\r\n", " ").replaceAll("/\\*.*?\\*/", " ").trim();
+		strip_query = (strip_query.endsWith(";") ? strip_query.substring(0, strip_query.length()-1) : strip_query).trim();
         try {
-            if(query.toLowerCase().startsWith("commit")) {
-                StringTokenizer st = new StringTokenizer(query.toLowerCase(), " ");
+            if(strip_query.toLowerCase().startsWith("commit")) {
+                StringTokenizer st = new StringTokenizer(strip_query.toLowerCase(), " ");
                 if(st.countTokens() == 1) {
                     rcon.commit();
                     clearSavePoint();
@@ -1464,8 +1482,8 @@ public class SQLMinus {
                     logln("a token other than WORK follows COMMIT", ToolLogger.ERROR);
                 }
                 return true;
-            } else if(query.toLowerCase().startsWith("rollback")) {
-                StringTokenizer st = new StringTokenizer(query.toLowerCase(), " ");
+            } else if(strip_query.toLowerCase().startsWith("rollback")) {
+                StringTokenizer st = new StringTokenizer(strip_query.toLowerCase(), " ");
                 if(st.countTokens() == 1) {
                     rcon.rollback();
                     clearSavePoint();
@@ -1501,8 +1519,8 @@ public class SQLMinus {
                     logln("SQL command not properly ended", ToolLogger.ERROR);
                 }
                 return true;
-            } else if(query.toLowerCase().startsWith("savepoint")) {
-                StringTokenizer st = new StringTokenizer(query.toLowerCase(), " ");
+            } else if(strip_query.toLowerCase().startsWith("savepoint")) {
+                StringTokenizer st = new StringTokenizer(strip_query.toLowerCase(), " ");
                 if(st.countTokens() == 2) {
                     st.nextToken();
                     String sp_name = st.nextToken();
@@ -1571,6 +1589,8 @@ public class SQLMinus {
             logln("   SPO[OL]");
             logln("   VER[SION]");
             logln("   INFO");
+            logln("   PRINT");
+            logln("   SLEEP");
             logln("   /");
             logln("   !");
             logln("   @");
@@ -1584,6 +1604,25 @@ public class SQLMinus {
             logln("");
             logln(" VER[SION]");
             logln("");
+        } else if(topic.equalsIgnoreCase("print")) {
+            logln("");
+            logln(" PRINT");
+            logln(" -------");
+            logln("");
+            logln(" Display string on the screen.");
+            logln("");
+            logln(" PRINT [string]");
+            logln("");        	
+        } else if(topic.equalsIgnoreCase("sleep")) {
+            logln("");
+            logln(" SLEEP");
+            logln(" -------");
+            logln("");
+            logln(" Display string on the screen.");
+            logln("     - number of milliseconds sleeping");
+            logln("");
+            logln(" SLEEP {n}");
+            logln("");        	
         } else if(topic.equalsIgnoreCase("info")) {
             logln("");
             logln(" INFO");
@@ -1603,13 +1642,13 @@ public class SQLMinus {
             logln("");
             logln(" Sets a system variable to alter the SQL*Minus environment settings");
             logln(" for your current session, for example:");
-            logln("     -   display width for data");
-            logln("     -   enabling or disabling printing of column headings");
-            logln("     -   number of lines per page");
-            logln("     -   number of seconds waiting for executing query");
-            logln("     -   turn on checking rows of result");
-            logln("     -   turn on checking connection by check query");
-            logln("     -   number of seconds waiting for check query");
+            logln("     - display width for data");
+            logln("     - enabling or disabling printing of column headings");
+            logln("     - number of lines per page");
+            logln("     - number of seconds waiting for executing query");
+            logln("     - turn on checking rows of result");
+            logln("     - turn on checking connection by check query");
+            logln("     - number of seconds waiting for check query");
             logln("");
             logln(" SET system_variable value");
             logln("");
@@ -1890,47 +1929,139 @@ public class SQLMinus {
     }
 
 
-    private boolean processAction(String action, String query, String tm, LinkedList<String> ll) throws Exception {
+    private boolean processAction(String action, String query, String tm, LinkedList<String> ll) throws Exception{
+
+    	if(!action.equals("query") && !action.equals("comment") && !action.equals("print")) {
+    		query = query.replaceAll("--.*", " ").replaceAll("\r\n", " ").replaceAll("/\\*.*?\\*/", " ").trim();
+    		query = query.endsWith(";") ? query.substring(0, query.length()-1).trim() : query;
+    		query = query.replaceAll("( )+", " ");
+    	} else if(action.equals("query")) {
+    		String query_strip = query.replaceAll("--.*", " ").replaceAll("\r\n", " ").replaceAll("/\\*.*?\\*/", " ").trim();
+    		if(query_strip.indexOf(";") > -1) {
+        		if(!query_strip.endsWith(";")) {
+        			logln("The SQL statement must end with a ';'.", ToolLogger.ERROR);
+        			return true;
+        		}
+    		} else {
+    			if(scriptProcessing) {
+    				throw new NeedMoreQueryException(query);
+    			} else {
+    				StringBuilder sb = new StringBuilder(query + "\r\n");
+    				String line;
+    				do {
+    		            line = Util.readLine(tm + "   > ", ToolLogger.INFO);
+    		            sb.append(line);
+    		            query_strip = sb.toString().replaceAll("--.*", " ").replaceAll("\r\n", " ").replaceAll("/\\*.*?\\*/", " ").trim();
+    				} while(query_strip.indexOf(";") < 0);
+            		if(!query_strip.endsWith(";")) {
+            			logln("The SQL statement must end with a ';'.", ToolLogger.ERROR);
+            			return true;
+            		}
+            		query = sb.toString().trim();
+    			}
+    		}
+    	}
 
         if(action.equals("script")) {
 
-            if(cmd.substring(1).trim().length() < 1) {
-                logln("unable to open file \"\"", ToolLogger.ERROR);
-                return false;
-            }
-
-            StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(1,cmd.length()-1).trim():cmd.substring(1), " ");
-            boolean ret = true;
-            for(int i = 0; i < st.countTokens(); i++) {
-                String fname = Util.checkFileName(st.nextToken(), "sql");
-                if(ll.contains(fname)) {
-                    String pre = ll.getLast();
-                    logln("Infinite loop has been detected in \"" + pre + "\"", ToolLogger.ERROR);
-                    return false;
-                } else {
-                    ll.addLast(fname);
-                }
-                if(fname.length() > 0) {
-                    File f = new File(fname);
-                    if(f.exists()) {
-                        List<String> l = readScript(f);
-                        String subaction;
-                        for(int j = 0; j < l.size(); j++) {
-                            cmd = l.get(j);
-                            subaction = getAction(cmd);
-                            ret = processAction(subaction, cmd, tm, ll);
-                            if(ret == false) {
-                                return false;
-                            }
-                        }
-                    } else {
-                        logln("unable to open file \"" + fname + "\"", ToolLogger.ERROR);
-                        return true;
-                    }
-                }
-            }
-            ll.removeLast();
-            return true;
+    		DebugLogger.logln("Start of script command : \"" + query + "\"" , DebugLogger.WARN);
+    		boolean scriptProcessing_before = scriptProcessing;
+    		String originalQuery = query;
+    		
+        	try {
+        		String originalDir = currentDir.getAbsolutePath();
+        		cmdBuffer = new StringBuilder("");
+        		
+        		if(query.substring(1).trim().length() < 1) {
+	                logln("unable to open file \"\"\n", ToolLogger.ERROR);
+                    DebugLogger.logln("unable to open file \"\"", DebugLogger.WARN);	                        
+	                return false;
+	            }
+	
+	            StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(1,query.length()-1).trim():query.substring(1), " ");
+	            boolean ret = true;
+	            while(st.hasMoreTokens()) {
+	                String fname = Util.checkFileName(st.nextToken(), "sql");
+	                if(ll.contains(fname)) {
+	                    String pre = ll.getLast();
+	                    logln("Infinite loop has been detected in \"" + pre + "\"\n", ToolLogger.ERROR);
+                        DebugLogger.logln("Infinite loop has been detected in \"" + pre + "\"", DebugLogger.WARN);	                        
+	                    return false;
+	                } else {
+	                    ll.addLast(fname);
+	                }
+	                if(fname.length() > 0) {
+	                	boolean is_absolute = "/".equals(System.getProperty("file.separator")) ? fname.startsWith("/") : fname.indexOf(":\\")==1;
+	                    File f = is_absolute ? new File(fname) : new File(currentDir, fname);
+	                    if(f.exists()) {
+                    		DebugLogger.logln("Start of script file : \"" + fname + "\"", DebugLogger.WARN);
+                    		scriptProcessing = true;
+                    		currentDir = f.getParentFile();
+	                    	try {
+		                        List<String> l = readScript(f);
+		                        String subaction = null;
+		                        String line = null;
+		                        boolean more_query = false;
+		                        for(int j = 0; j < l.size(); j++) {
+		                            line = l.get(j);
+		                            if(!more_query) {
+			                            subaction = getAction(line);
+			                            if(subaction.equals("comment")) {
+			                            	cmdBuffer.append(line + "\r\n");
+			                                while(j+1 < l.size()) {
+			                                	line = l.get(++j);
+			                                    cmdBuffer.append(line);
+			                                    if(line.indexOf("*/") > -1) {
+			                                    	break;
+			                                    }
+			                                }
+			            	                String full_cmd = cmdBuffer.toString().trim();
+			            	                String strip_cmd = full_cmd.substring(0, full_cmd.indexOf("/*")) + full_cmd.substring(full_cmd.indexOf("*/")+2);
+			            	                strip_cmd = (strip_cmd.endsWith(";") ? strip_cmd.substring(0,strip_cmd.length()-1) : strip_cmd).trim(); 
+			            	                subaction = getAction(strip_cmd);
+			            	                line = strip_cmd;
+			                            }
+		                            }
+		                            cmdBuffer.append(line + "\r\n");
+		                            if(subaction.equals("exit")) {
+	                            		logln("Exiting... The command after it will be ignored.", ToolLogger.INFO);
+	                            		DebugLogger.logln("Called \"exit\" command in the script \"" + fname + "\"" , DebugLogger.WARN);
+		                            }
+		                            try {
+			                            ret = processAction(subaction, cmdBuffer.toString().trim(), tm, ll);
+			                            more_query = false;
+			                            cmdBuffer = new StringBuilder("");
+			                            if(ret == false) {
+			                                return false;
+			                            }
+		                            } catch(NeedMoreQueryException e) {
+		                            	more_query = true;
+		                            	if(j+1 < l.size()) {
+		                            		continue;
+		                            	} else {
+		                            		logln("Incomplete SQL \"" + e.getMessage() + "\"\n", ToolLogger.ERROR);
+		                            	}
+		                            }
+		                        }
+	                    	} finally {
+	                    		currentDir = new File(originalDir);
+	                    		DebugLogger.logln("End of script file : \"" + fname + "\"", DebugLogger.WARN);
+	                    	}
+	                    } else {
+	                        logln("unable to open file \"" + fname + "\"\n", ToolLogger.ERROR);
+	                        DebugLogger.logln("unable to open file \"" + fname + "\"", DebugLogger.WARN);	                        
+	                        ll.removeLast();
+	                        return true;
+	                    }
+	                }
+	            }
+	            ll.removeLast();
+	            return true;
+        	} finally {
+        		prev = originalQuery;
+        		scriptProcessing = scriptProcessing_before;
+        		DebugLogger.logln("End of script command : \"" + query + "\"" , DebugLogger.WARN);
+        	}
 
         } else {
 
@@ -1940,7 +2071,7 @@ public class SQLMinus {
 
                 loop = false;
 
-                StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(0,cmd.length()-1).trim():cmd, " ");
+                StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(0,query.length()-1).trim():query, " ");
                 if(st.countTokens() == 2) {
                     st.nextToken();
                     String second = st.nextToken();
@@ -1959,7 +2090,7 @@ public class SQLMinus {
 
             } else if(action.equals("help")) {
 
-                StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(0,cmd.length()-1).trim():cmd, " ");
+                StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(0,query.length()-1).trim():query, " ");
                 if(st.countTokens() == 1) {
                     printHelp(null);
                 } else if(st.countTokens() == 2) {
@@ -1970,6 +2101,52 @@ public class SQLMinus {
                     logln("No HELP available.", ToolLogger.ERROR);
                 }
                 return true;
+                
+            } else if(action.equals("sleep")) {
+
+                String temp = query.endsWith(";")?query.substring(0,query.length()-1):query;
+                while(temp.indexOf("  ") > -1) {
+                    temp = temp.replaceAll("( )+", " ");
+                }
+
+                StringTokenizer st = new StringTokenizer(temp.trim().toLowerCase(), " ");
+                if(st.countTokens() == 1) {
+                    logln("An argument for sleep is required.", ToolLogger.ERROR);
+                    return true;
+                } else if(st.countTokens() > 2) {
+                	logln("Too many arguments.", ToolLogger.ERROR);
+                    return true;
+                }
+                st.nextToken();
+                String to = null;
+                to = (st.hasMoreTokens())?st.nextToken():null;
+                if(to == null || !Util.isNumber(to)) {
+                    logln("milliseconds argument not a valid number", ToolLogger.ERROR);
+                    return true;
+                }                
+            	try {
+            		logln("Sleeping for " + String.format("%,d", Integer.valueOf(to)) + "ms", ToolLogger.RESULT);
+            		Thread.sleep(Integer.valueOf(to));
+            	} catch(InterruptedException e) {}
+            	return true;
+
+            } else if(action.equals("print")) {
+
+            	String print_cmd = query.endsWith(";")?query.substring(0,query.length()-1).trim():query;
+            	StringTokenizer st = new StringTokenizer(print_cmd.trim(), " ");
+                if(st.countTokens() == 1) {
+                    logln("An argument for print is required.", ToolLogger.ERROR);
+                    return true;
+                }
+                
+            	int idx = print_cmd.toLowerCase().indexOf("print");
+            	print_cmd = print_cmd.substring(idx+6);
+            	String print_strip = print_cmd.trim();
+            	if((print_strip.startsWith("\"") && print_strip.endsWith("\"")) || (print_strip.startsWith("'") && print_strip.endsWith("'"))) {
+            		print_cmd = print_strip.substring(1, print_strip.length()-1);
+            	}
+            	logln(print_cmd, ToolLogger.RESULT);
+            	return true;
 
             } else if(action.equals("version")) {
 
@@ -1977,11 +2154,8 @@ public class SQLMinus {
                 if(rcon == null) {
                     logln("", ToolLogger.ERROR);
                     logln("Not connected to server.", ToolLogger.ERROR);
-                    try {
-                    	reconnect();
-                    } catch(Exception e) {
-                        return false;
-                    }
+                    reconnect();
+                    return false;
                 }
                 DatabaseMetaData meta = rcon.getMetaData();
                 logln("JDBC Driver: " + meta.getDriverName() + " " + meta.getDriverVersion(), ToolLogger.INFO);
@@ -1996,7 +2170,7 @@ public class SQLMinus {
 
             } else if(action.equals("table")) {
 
-                StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(0,cmd.length()-1).trim():cmd, " ");
+                StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(0,query.length()-1).trim():query, " ");
                 if(st.countTokens() == 1) {
                     query = dbinfo.getLSQuery(null);
                     if(query.equals("")) {
@@ -2018,7 +2192,7 @@ public class SQLMinus {
 
             } else if(action.equals("describe")) {
 
-                StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(0,cmd.length()-1).trim():cmd, " ");
+                StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(0,query.length()-1).trim():query, " ");
                 if(st.countTokens() != 2) {
                     logln("Usage: DESC[RIBE] object", ToolLogger.ERROR);
                     return true;
@@ -2030,7 +2204,7 @@ public class SQLMinus {
 
             } else if(action.equals("spool")) {
 
-                StringTokenizer st = new StringTokenizer(cmd.endsWith(";")?cmd.substring(0,cmd.length()-1).trim():cmd, " ");
+                StringTokenizer st = new StringTokenizer(query.endsWith(";")?query.substring(0,query.length()-1).trim():query, " ");
                 if(st.countTokens() == 1) {
                     if(ToolLogger.getSpoolName() == null) {
                         logln("not spooling currently", ToolLogger.ERROR);
@@ -2063,12 +2237,21 @@ public class SQLMinus {
 
             } else if(action.equals("comment")) {
 
-                readDOC(tm + "DOC> ");
-                return true;
+            	if(scriptProcessing) {
+            		cmdBuffer.append(query + "\r\n");
+            		return true;
+            	} else {
+	                readDOC(tm + "DOC> ");
+	                String full_cmd = cmdBuffer.toString().trim();
+	                String strip_cmd = full_cmd.substring(0, full_cmd.indexOf("/*")) + full_cmd.substring(full_cmd.indexOf("*/")+2);
+	                strip_cmd = (strip_cmd.endsWith(";") ? strip_cmd.substring(0,strip_cmd.length()-1) : strip_cmd).trim(); 
+	                String real_action = getAction(strip_cmd);
+	            	return processAction(real_action, "query".equals(real_action)?full_cmd:strip_cmd, tm, ll);
+            	}
 
             } else if(action.equals("external")) {
 
-                String full_cmd = cmd.endsWith(";")?cmd.substring(1,cmd.length()-1).trim():cmd.substring(1);
+                String full_cmd = query.endsWith(";")?query.substring(1,query.length()-1).trim():query.substring(1);
                 StringTokenizer st = new StringTokenizer(full_cmd, " ");
                 String[] command = new String[st.countTokens()+2];
                 if(System.getProperty("file.separator").equals("/")) {
@@ -2131,14 +2314,14 @@ public class SQLMinus {
 
             } else if(action.equals("unknown")) {
 
-                logln("unknown command \"" + cmd + "\" - rest of line ignored.", ToolLogger.ERROR);
+                logln("unknown command \"" + query + "\" - rest of line ignored.", ToolLogger.ERROR);
                 return true;
 
             } else if(action.equals("connect")) {
 
-                String temp = cmd.endsWith(";")?cmd.substring(0,cmd.length()-1):cmd;
+                String temp = query.endsWith(";")?query.substring(0,query.length()-1):query;
                 while(temp.indexOf("  ") > -1) {
-                    temp = temp.replaceAll("  ", " ");
+                    temp = temp.replaceAll("( )+", " ");
                 }
 
                 StringTokenizer st = new StringTokenizer(temp.trim(), " ");
@@ -2193,19 +2376,15 @@ public class SQLMinus {
                 closeConnection();
                 ToolLogger.setSilent(prev_silent);
 
-                try {
-                	createConnection(false);
-                } catch(Exception e) {
-                	return false;
-                }
+                createConnection(false);
 
                 return true;
 
             } else if(action.equals("define")) {
 
-                String temp = cmd.endsWith(";")?cmd.substring(0,cmd.length()-1):cmd;
+                String temp = query.endsWith(";")?query.substring(0,query.length()-1):query;
                 while(temp.indexOf("  ") > -1) {
-                    temp = temp.replaceAll("  ", " ");
+                    temp = temp.replaceAll("( )+", " ");
                 }
 
                 StringTokenizer st = new StringTokenizer(temp.trim(), " ");
@@ -2281,9 +2460,9 @@ public class SQLMinus {
 
             } else if(action.equals("setting")) {
 
-                String temp = cmd.endsWith(";")?cmd.substring(0,cmd.length()-1):cmd;
+                String temp = query.endsWith(";")?query.substring(0,query.length()-1):query;
                 while(temp.indexOf("  ") > -1) {
-                    temp = temp.replaceAll("  ", " ");
+                    temp = temp.replaceAll("( )+", " ");
                 }
 
                 StringTokenizer st = new StringTokenizer(temp.trim().toLowerCase(), " ");
@@ -2484,9 +2663,9 @@ public class SQLMinus {
 
             } else if(action.equals("column")) {
 
-                String temp = cmd.endsWith(";")?cmd.substring(0,cmd.length()-1):cmd;
+                String temp = query.endsWith(";")?query.substring(0,query.length()-1):query;
                 while(temp.indexOf("  ") > -1) {
-                    temp = temp.replaceAll("  ", " ");
+                    temp = temp.replaceAll("( )+", " ");
                 }
 
                 StringTokenizer st = new StringTokenizer(temp.trim(), " ");
@@ -2604,7 +2783,7 @@ public class SQLMinus {
 
             } else if(action.equals("query")) {
 
-                prev = query = cmd;
+                prev = query;
 
             } else if(action.equals("no")) {
 
@@ -2645,17 +2824,21 @@ public class SQLMinus {
                             rcon.setQueryTimeout(timeOut);
                         }
                         start = System.currentTimeMillis();
-                        if(query.toLowerCase().startsWith("select") || query.toLowerCase().startsWith("show")) {
-                            rs = rcon.executeQuery(query);
+                        String first_line = query.split("\n")[0];
+                        first_line = first_line.replaceAll("^/\\*.+\\*/", "").trim();
+
+                        QueryResult query_result = rcon.execute(query);
+                        if(query_result.isSelect()) {
+                            rs = query_result.getResultSet();
                             if(action.equals("describe")) {
                                 printDescribe(rs.getMetaData());
                             } else {
                                 printResultSet(rs);
                             }
                         } else {
-                            int i = rcon.executeUpdate(query);
+                            int i = query_result.getUpdateCount();
                             printResult(i, query);
-                        }
+                        }                     
                     } catch(SQLException se) {
                         if(action.equals("describe")) {
                             logln("schema object does not exist", ToolLogger.ERROR);
@@ -2677,16 +2860,19 @@ public class SQLMinus {
                     logln("", ToolLogger.RESULT);
                 }
             } else {
-                logln("Not connected to server.", ToolLogger.ERROR);
-                try {
-                	reconnect();
-                } catch(Exception e) {
-                    return false;
-                }
+                logln("Not connected.", ToolLogger.ERROR);
+                reconnect();
             }
 
         }
         return true;
     }
 
+    @SuppressWarnings("serial")
+	public class NeedMoreQueryException extends RuntimeException {
+    	public NeedMoreQueryException(String msg) {
+    		super(msg);
+    	}
+    }
+    
 }

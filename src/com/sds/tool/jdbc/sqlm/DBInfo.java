@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.StringTokenizer;
+import java.util.Vector;
 
 import com.sds.tool.jdbc.sqlm.util.Util;
 import com.sds.tool.util.DebugLogger;
@@ -59,9 +60,77 @@ public class DBInfo {
     private List<String> drivers = null;
     private String currentDir = System.getProperty("user.dir");
     private Hashtable<String,String> params = new Hashtable<String,String>();
+    private Vector<List<String>> jdbclibs = new Vector<List<String>>();
 
 
-    public DBInfo() {}
+    public DBInfo() {
+        List<String> l = new ArrayList<String>();
+        jdbclibs.add(0, l);
+
+        l = new ArrayList<String>();
+        l.add("classes12.jar");
+        l.add("ojdbc14.jar");
+        l.add("ojdbc6.jar");
+        l.add("ojdbc7.jar");
+        jdbclibs.add(ORACLE, l);
+
+        l = new ArrayList<String>();
+        l.add("tibero-jdbc.jar");
+        l.add("tibero-jdbc-1.3.jar");
+        l.add("tibero6-jdbc-14.jar");
+        l.add("tibero6-jdbc.jar");
+        jdbclibs.add(TIBERO, l);
+
+        l = new ArrayList<String>();
+        l.add("msbase.jar");
+        l.add("mssqlserver.jar");
+        l.add("msutil.jar");
+        jdbclibs.add(SQL2000, l);
+
+        l = new ArrayList<String>();
+        l.add("sqljdbc.jar");
+        jdbclibs.add(SQL2005, l);
+
+        l = new ArrayList<String>();
+        l.add("jconn3.jar");
+        l.add("jconn2.jar");
+        l.add("jTDS2.jar");
+        jdbclibs.add(SYBASE, l);
+
+        l = new ArrayList<String>();
+        l.add("ifxjdbc.jar");
+        jdbclibs.add(INFORMIX, l);
+
+        l = new ArrayList<String>();
+        l.add("db2jcc.jar");
+        l.add("db2jcc4.jar");
+        jdbclibs.add(DB2, l);
+
+        l = new ArrayList<String>();
+        l.add("mysql-connector-java-bin.jar");
+        jdbclibs.add(MYSQL, l);
+
+        l = new ArrayList<String>();
+        l.add("postgresql.jar");
+        jdbclibs.add(POSTGRE, l);
+
+        l = new ArrayList<String>();
+        l.add("Altibase.jar");
+        jdbclibs.add(ALTIBASE, l);
+
+        l = new ArrayList<String>();
+        l.add("unisqljdbc.jar");
+        l.add("cubrid_jdbc.jar");
+        jdbclibs.add(UNISQL, l);
+
+        l = new ArrayList<String>();
+        l.add("hsqldb.jar");
+        jdbclibs.add(HSQL, l);
+
+        l = new ArrayList<String>();
+        l.add("pbclient.jar");
+        jdbclibs.add(POINTBASE, l);
+    }
 
 
     private void logln(Object msg) {
@@ -221,23 +290,20 @@ public class DBInfo {
         	l = drivers;
         }
         if(l.size() < 1) {
-            logln("No library to load.", ToolLogger.ERROR);
-            DebugLogger.logln("No library to load.", DebugLogger.ERROR);
+            DebugLogger.logln("Can't find JDBC Driver.", DebugLogger.ERROR);
         	System.exit(-1);
         }
         DebugLogger.logln("Libraries to load : " + ObjectDataUtil.toString(l,false), DebugLogger.INFO);
         
-        try {
-            List<String> jar_list = addJDBCToClasspath(l);
-            DebugLogger.logln("Successfully added libraries to the classpath : " + ObjectDataUtil.toString(jar_list,false), DebugLogger.INFO);
-        } catch(Exception e) {
-            logln(e.getMessage(), ToolLogger.ERROR);
-            DebugLogger.logln(e.getMessage(), DebugLogger.ERROR);
+        List<String> jar_list = addJDBCToClasspath(l);
+        if(jar_list.size() < 1) {
+            DebugLogger.logln("No library loaded.", DebugLogger.ERROR);
         	System.exit(-1);
         }
+        DebugLogger.logln("Successfully added libraries to the classpath.", DebugLogger.INFO);
     	
         if(conUrl == null) {
-            inputType();
+            inputType(jar_list);
             inputAddr();
             inputPort();
             inputDBName();
@@ -260,7 +326,7 @@ public class DBInfo {
     }
 
 
-    private List<String> addJDBCToClasspath(List<String> l) throws Exception {
+    private List<String> addJDBCToClasspath(List<String> l) {
     	List<String> lst = new ArrayList<String>();
     	try {
     		final URLClassLoader loader = (URLClassLoader)ClassLoader.getSystemClassLoader();
@@ -282,20 +348,33 @@ public class DBInfo {
     		}
     	} catch(Exception e) {
 			DebugLogger.logln("Error occurred while loading JDBC drivers.", DebugLogger.ERROR);
-			throw e;
-    	}
-    	if(lst.size() < 1) {
-    		throw new Exception("No JDBC Driver loaded.");
     	}
 		return lst;
     }
 
 
-	private void inputType() {
+	private void inputType(List<String> loaded) {
+        int dbType = 0;
+        int num = 1;
+        List<Integer> idx = new ArrayList<Integer>();
         logln("Choose DBMS", ToolLogger.INFO);
         logln("-----------", ToolLogger.INFO);
-        for(int i = 1; i < DBMSName.length; i++) {
-			logln(i + ") " + DBMSName[i], ToolLogger.INFO);
+        for(int i = 1; i < jdbclibs.size(); i++) {
+            List<String> l = (List<String>)jdbclibs.get(i);
+            for(int j = 0; j < l.size(); j++) {
+                String lib = (String)l.get(j);
+                for(int k = 0; k < loaded.size(); k++) {
+                    String fname = (String)loaded.get(k);
+                    if(lib.equalsIgnoreCase(fname)) {
+                    	DebugLogger.logln("Matched library with JDBC driver : " + fname, DebugLogger.DEBUG);
+                        dbType = i;
+                        idx.add(new Integer(i));
+                        logln(String.valueOf(num++) + ") " + DBMSName[dbType], ToolLogger.INFO);
+                        k = loaded.size();
+                        j = l.size();
+                    }
+                }
+            }
         }
         logln("", ToolLogger.INFO);
 
@@ -309,15 +388,15 @@ public class DBInfo {
             }
             if(Util.isNumber(sel)) {
                 i_sel = Integer.parseInt(sel);
-                if(i_sel > DBMSName.length || i_sel < 1) {
+                if(i_sel > loaded.size() || i_sel < 1) {
                     logln("invalid number. try again...", ToolLogger.ERROR);
                 }
             } else {
                 logln("invalid number. try again...", ToolLogger.ERROR);
             }
-        } while(!Util.isNumber(sel) || i_sel > DBMSName.length || i_sel < 1);
+        } while(!Util.isNumber(sel) || i_sel > loaded.size() || i_sel < 1);
 
-        type = i_sel;
+        type = ((Integer)idx.get(i_sel-1)).intValue();
 
         logln("", ToolLogger.INFO);
 
@@ -701,7 +780,8 @@ public class DBInfo {
             }
             DebugLogger.logln("Successfully loaded JDBC Driver Class : " + jdbcClass, DebugLogger.INFO);
         } catch(Exception e) {
-            DebugLogger.logln("Failed to load JDBC Driver Class : " + jdbcClass, e, DebugLogger.ERROR);
+            DebugLogger.logln("Failed to load JDBC Driver Class : " + e.getMessage(), DebugLogger.ERROR);
+            printSupportDrivers();
             System.exit(-1);
         }
 
@@ -914,6 +994,25 @@ public class DBInfo {
         logln("     - IN : " + inCharset);
         logln("     - OUT : " + outCharset);
         logln("");
+    }
+
+
+    public void printSupportDrivers() {
+        logln("JDBC Driver should be placed in current directory.\n", ToolLogger.ERROR);
+        logln("***** Supported JDBC Driver *****", ToolLogger.INFO);
+        logln("Oracle        : " + getLibraryNames(jdbclibs.get(ORACLE)),    ToolLogger.INFO);
+        logln("Tibero        : " + getLibraryNames(jdbclibs.get(TIBERO)),    ToolLogger.INFO);
+        logln("MS-SQL 2000   : " + getLibraryNames(jdbclibs.get(SQL2000)),   ToolLogger.INFO);
+        logln("MS-SQL 2005   : " + getLibraryNames(jdbclibs.get(SQL2005)),   ToolLogger.INFO);
+        logln("Sybase        : " + getLibraryNames(jdbclibs.get(SYBASE)),    ToolLogger.INFO);
+        logln("Informix      : " + getLibraryNames(jdbclibs.get(INFORMIX)),  ToolLogger.INFO);
+        logln("DB2           : " + getLibraryNames(jdbclibs.get(DB2)),       ToolLogger.INFO);
+        logln("MySQL         : " + getLibraryNames(jdbclibs.get(MYSQL)),     ToolLogger.INFO);
+        logln("PostgreSQL    : " + getLibraryNames(jdbclibs.get(POSTGRE)),   ToolLogger.INFO);
+        logln("ALTIBASE      : " + getLibraryNames(jdbclibs.get(ALTIBASE)),  ToolLogger.INFO);
+        logln("UNISQL        : " + getLibraryNames(jdbclibs.get(UNISQL)),    ToolLogger.INFO);
+        logln("HSQLDB        : " + getLibraryNames(jdbclibs.get(HSQL)),      ToolLogger.INFO);
+        logln("POINTBASE     : " + getLibraryNames(jdbclibs.get(POINTBASE)), ToolLogger.INFO);
     }
 
 
