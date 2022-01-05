@@ -122,7 +122,17 @@ Release Note
    > WITH절 인식<br>
    > Single-line 주석(--)<br>
    > Multi-line 주석(/* */)<br>
-
+   
+1.3.2
+ - 버그수정<br>
+ - 개선사항<br>
+   > MySQL 최신 드라이버 패키지 변경 반영
+   > JDBC 드라이버 목록 업데이트
+ - 추가기능<br>
+   > 기동시 JDBC 드라이버 경로 지정<br>
+   > COMMIT MODE 설정<br>
+   > MariaDB 지원<br>
+   
 Future Plan
 ---------------
 * Procedure 지원

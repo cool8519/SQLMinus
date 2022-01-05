@@ -109,6 +109,18 @@ public class StringUtil {
 		return ret;		
     }
     
+
+    /**
+     * 개행문자를 공백으로 치환한다.
+     * @param s 원본 문자열
+     * @return 치환된 문자열
+     */
+    public static String replaceNewlineWithSpace(String s) {
+    	String ret = s;
+		ret = ret.replaceAll("\\r\\n", " ");
+		return ret;		
+    }
+
     
     /**
      * 따옴표나 괄호가 포함된 문자열을 구분자로 잘라 리턴한다.<br/>

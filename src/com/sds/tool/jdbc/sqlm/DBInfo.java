@@ -21,26 +21,28 @@ public class DBInfo {
 
     public static final int ORACLE    = 1;
     public static final int TIBERO    = 2;
-    public static final int SQL2000   = 3;
-    public static final int SQL2005   = 4;
+    public static final int MSSQL2000 = 3;
+    public static final int SQLSERVER = 4;
     public static final int SYBASE    = 5;
     public static final int INFORMIX  = 6;
     public static final int DB2       = 7;
     public static final int MYSQL     = 8;
-    public static final int POSTGRE   = 9;
-    public static final int ALTIBASE  = 10;
-    public static final int UNISQL    = 11;
-    public static final int HSQL      = 12;
-    public static final int POINTBASE = 13;
+    public static final int MARIADB   = 9;
+    public static final int POSTGRE   = 10;
+    public static final int ALTIBASE  = 11;
+    public static final int UNISQL    = 12;
+    public static final int HSQL      = 13;
+    public static final int POINTBASE = 14;
     public static final String[] DBMSName = { "Unknown",
                                               "Oracle",
                                               "Tibero",
-                                              "MS-SQL 2000",
-                                              "MS-SQL 2005",
+                                              "MS-SQL2000",
+                                              "MS-SQLServer",
                                               "Sybase",
                                               "Informix",
                                               "DB2",
                                               "MySQL",
+                                              "MariaDB",
                                               "PostgreSQL",
                                               "ALTIBASE",
                                               "UNISQL",
@@ -60,76 +62,73 @@ public class DBInfo {
     private List<String> drivers = null;
     private String currentDir = System.getProperty("user.dir");
     private Hashtable<String,String> params = new Hashtable<String,String>();
-    private Vector<List<String>> jdbclibs = new Vector<List<String>>();
+    private Vector<List<String>> jdbcdrivers = new Vector<List<String>>();
 
 
     public DBInfo() {
         List<String> l = new ArrayList<String>();
-        jdbclibs.add(0, l);
+        jdbcdrivers.add(0, l);
 
         l = new ArrayList<String>();
-        l.add("classes12.jar");
-        l.add("ojdbc14.jar");
-        l.add("ojdbc6.jar");
-        l.add("ojdbc7.jar");
-        jdbclibs.add(ORACLE, l);
+        l.add("oracle.jdbc.driver.OracleDriver");
+        jdbcdrivers.add(ORACLE, l);
 
         l = new ArrayList<String>();
-        l.add("tibero-jdbc.jar");
-        l.add("tibero-jdbc-1.3.jar");
-        l.add("tibero6-jdbc-14.jar");
-        l.add("tibero6-jdbc.jar");
-        jdbclibs.add(TIBERO, l);
+        l.add("com.tmax.tibero.jdbc.TbDriver");
+        l.add("com.tmax.jdbc.tibero.TbrDriver");
+        jdbcdrivers.add(TIBERO, l);
 
         l = new ArrayList<String>();
-        l.add("msbase.jar");
-        l.add("mssqlserver.jar");
-        l.add("msutil.jar");
-        jdbclibs.add(SQL2000, l);
+        l.add("com.microsoft.jdbc.sqlserver.SQLServerDriver");
+        jdbcdrivers.add(MSSQL2000, l);
 
         l = new ArrayList<String>();
-        l.add("sqljdbc.jar");
-        jdbclibs.add(SQL2005, l);
+        l.add("com.microsoft.sqlserver.jdbc.SQLServerDriver");
+        jdbcdrivers.add(SQLSERVER, l);
 
         l = new ArrayList<String>();
-        l.add("jconn3.jar");
-        l.add("jconn2.jar");
-        l.add("jTDS2.jar");
-        jdbclibs.add(SYBASE, l);
+        l.add("com.sybase.jdbc2.jdbc.SybDriver");
+        jdbcdrivers.add(SYBASE, l);
 
         l = new ArrayList<String>();
-        l.add("ifxjdbc.jar");
-        jdbclibs.add(INFORMIX, l);
+        l.add("com.informix.jdbc.IfxDriver");
+        jdbcdrivers.add(INFORMIX, l);
 
         l = new ArrayList<String>();
-        l.add("db2jcc.jar");
-        l.add("db2jcc4.jar");
-        jdbclibs.add(DB2, l);
+        l.add("com.ibm.db2.jcc.DB2Driver");
+        l.add("COM.ibm.db2.jdbc.net.DB2Driver");
+        jdbcdrivers.add(DB2, l);
 
         l = new ArrayList<String>();
-        l.add("mysql-connector-java-bin.jar");
-        jdbclibs.add(MYSQL, l);
+        l.add("com.mysql.cj.jdbc.Driver");
+        l.add("com.mysql.jdbc.Driver");
+        l.add("org.gjt.mm.mysql.Driver");
+        jdbcdrivers.add(MYSQL, l);
 
         l = new ArrayList<String>();
-        l.add("postgresql.jar");
-        jdbclibs.add(POSTGRE, l);
+        l.add("org.mariadb.jdbc.Driver");
+        jdbcdrivers.add(MARIADB, l);
+        
+        l = new ArrayList<String>();
+        l.add("org.postgresql.Driver");
+        l.add("postgresql.Driver");
+        jdbcdrivers.add(POSTGRE, l);
 
         l = new ArrayList<String>();
-        l.add("Altibase.jar");
-        jdbclibs.add(ALTIBASE, l);
+        l.add("Altibase.jdbc.driver.AltibaseDriver");
+        jdbcdrivers.add(ALTIBASE, l);
 
         l = new ArrayList<String>();
-        l.add("unisqljdbc.jar");
-        l.add("cubrid_jdbc.jar");
-        jdbclibs.add(UNISQL, l);
+        l.add("unisql.jdbc.driver.UniSQLDriver");
+        jdbcdrivers.add(UNISQL, l);
 
         l = new ArrayList<String>();
-        l.add("hsqldb.jar");
-        jdbclibs.add(HSQL, l);
+        l.add("org.hsqldb.jdbcDriver");
+        jdbcdrivers.add(HSQL, l);
 
         l = new ArrayList<String>();
-        l.add("pbclient.jar");
-        jdbclibs.add(POINTBASE, l);
+        l.add("com.pointbase.jdbc.jdbcUniversalDriver");
+        jdbcdrivers.add(POINTBASE, l);
     }
 
 
@@ -290,7 +289,8 @@ public class DBInfo {
         	l = drivers;
         }
         if(l.size() < 1) {
-            DebugLogger.logln("Can't find JDBC Driver.", DebugLogger.ERROR);
+            DebugLogger.logln("Can't find JDBC Drivers.", DebugLogger.ERROR);
+            logln("Can't find JDBC Drivers.", ToolLogger.ERROR);
         	System.exit(-1);
         }
         DebugLogger.logln("Libraries to load : " + ObjectDataUtil.toString(l,false), DebugLogger.INFO);
@@ -298,12 +298,19 @@ public class DBInfo {
         List<String> jar_list = addJDBCToClasspath(l);
         if(jar_list.size() < 1) {
             DebugLogger.logln("No library loaded.", DebugLogger.ERROR);
+            logln("No available JDBC Driver.", ToolLogger.ERROR);
         	System.exit(-1);
         }
         DebugLogger.logln("Successfully added libraries to the classpath.", DebugLogger.INFO);
     	
         if(conUrl == null) {
-            inputType(jar_list);
+        	try {
+        		inputType(jar_list);
+        	} catch(Exception e) {
+                DebugLogger.logln("Failed to choose DBMS : " + e.getMessage(), DebugLogger.ERROR);
+                logln(e.getMessage(), ToolLogger.ERROR);
+                System.exit(-1);        		
+        	}
             inputAddr();
             inputPort();
             inputDBName();
@@ -353,34 +360,37 @@ public class DBInfo {
     }
 
 
-	private void inputType(List<String> loaded) {
-        int dbType = 0;
-        int num = 1;
+	private void inputType(List<String> loaded) throws Exception {
         List<Integer> idx = new ArrayList<Integer>();
-        logln("Choose DBMS", ToolLogger.INFO);
-        logln("-----------", ToolLogger.INFO);
-        for(int i = 1; i < jdbclibs.size(); i++) {
-            List<String> l = (List<String>)jdbclibs.get(i);
+        for(int i = 1; i < DBMSName.length; i++) {
+            List<String> l = (List<String>)jdbcdrivers.get(i);
             for(int j = 0; j < l.size(); j++) {
-                String lib = (String)l.get(j);
-                for(int k = 0; k < loaded.size(); k++) {
-                    String fname = (String)loaded.get(k);
-                    if(lib.equalsIgnoreCase(fname)) {
-                    	DebugLogger.logln("Matched library with JDBC driver : " + fname, DebugLogger.DEBUG);
-                        dbType = i;
-                        idx.add(new Integer(i));
-                        logln(String.valueOf(num++) + ") " + DBMSName[dbType], ToolLogger.INFO);
-                        k = loaded.size();
-                        j = l.size();
-                    }
+                String drv = (String)l.get(j);
+                try {
+                	Class.forName(drv);
+                	DebugLogger.logln("Successfully loaded JDBC driver : " + drv, DebugLogger.DEBUG);
+                    idx.add(new Integer(i));
+                    j = l.size();
+                } catch(Exception e) {               	
+                	DebugLogger.logln("Failed to load JDBC driver : " + drv, DebugLogger.DEBUG);
                 }
-            }
+            }        	
         }
-        logln("", ToolLogger.INFO);
+        
+        if(idx.size() < 1) {
+        	throw new Exception("There is no JDBC Driver loaded.");
+        }
 
         String sel = "";
         int i_sel = 0;
 
+        logln("Choose DBMS", ToolLogger.INFO);
+        logln("-----------", ToolLogger.INFO);
+        for(int i = 1; i <= idx.size(); i++) {
+            logln(String.valueOf(i) + ") " + DBMSName[idx.get(i-1)], ToolLogger.INFO);
+        }
+        
+        logln("", ToolLogger.INFO);
         do {
             sel = readLine("Choose DBMS(Default:1): ", ToolLogger.INFO);
             if(sel.length() < 1) {
@@ -388,13 +398,13 @@ public class DBInfo {
             }
             if(Util.isNumber(sel)) {
                 i_sel = Integer.parseInt(sel);
-                if(i_sel > loaded.size() || i_sel < 1) {
+                if(i_sel > idx.size() || i_sel < 1) {
                     logln("invalid number. try again...", ToolLogger.ERROR);
                 }
             } else {
                 logln("invalid number. try again...", ToolLogger.ERROR);
             }
-        } while(!Util.isNumber(sel) || i_sel > loaded.size() || i_sel < 1);
+        } while(!Util.isNumber(sel) || i_sel > idx.size() || i_sel < 1);
 
         type = ((Integer)idx.get(i_sel-1)).intValue();
 
@@ -508,10 +518,10 @@ public class DBInfo {
             temp_dbname = st.nextToken();
         } else if(token.equals("microsoft") || token.equals("sqlserver")) {
             if(token.equals("microsoft")) {
-                temp_type = DBInfo.SQL2000;
+                temp_type = DBInfo.MSSQL2000;
                 token = st.nextToken();
             } else {
-                temp_type = DBInfo.SQL2005;
+                temp_type = DBInfo.SQLSERVER;
             }
             temp_ip = st.nextToken();
             if(!temp_ip.startsWith("//")) return false;
@@ -581,9 +591,11 @@ public class DBInfo {
                     params.put(name, value);
                 }
             }
-        } else if(token.equals("mysql") || token.equals("postgresql") || token.equals("Altibase")) {
+        } else if(token.equals("mysql") || token.equals("mariadb") || token.equals("postgresql") || token.equals("Altibase")) {
             if(token.equals("mysql")) {
                 temp_type = DBInfo.MYSQL;
+            } else if(token.equals("mariadb")) {
+            	temp_type = DBInfo.MARIADB;
             } else if(token.equals("postgresql")) {
                 temp_type = DBInfo.POSTGRE;
             } else if(token.equals("Altibase")) {
@@ -661,10 +673,10 @@ public class DBInfo {
             case TIBERO    :
                 conStr = "jdbc:tibero:thin:@" + ip + ":" + port + ":" + dbname;
                 break;
-            case SQL2000   :
+            case MSSQL2000 :
                 conStr = "jdbc:microsoft:sqlserver://" + ip + ":" + port + ";DatabaseName=" + dbname + Util.getParameters(params, ";", ";");
                 break;
-            case SQL2005   :
+            case SQLSERVER :
                 conStr = "jdbc:sqlserver://" + ip + ":" + port + ";DatabaseName=" + dbname + Util.getParameters(params, ";", ";");
                 break;
             case SYBASE    :
@@ -678,6 +690,9 @@ public class DBInfo {
                 break;
             case MYSQL     :
                 conStr = "jdbc:mysql://" + ip + ":" + port + "/" + dbname + Util.getParameters(params, "?", "&");
+                break;
+            case MARIADB     :
+                conStr = "jdbc:mariadb://" + ip + ":" + port + "/" + dbname + Util.getParameters(params, "?", "&");
                 break;
             case POSTGRE   :
                 conStr = "jdbc:postgresql://" + ip + ":" + port + "/" + dbname + Util.getParameters(params, "?", "&");
@@ -699,7 +714,7 @@ public class DBInfo {
         return conStr;
     }
 
-
+    
     public void loadJDBCDriver() {
         DebugLogger.logln("Loading JDBC Driver Class.", DebugLogger.DEBUG);
         String jdbcClass = "";
@@ -718,11 +733,11 @@ public class DBInfo {
                         Class.forName(jdbcClass);
                     }
                     break;
-                case SQL2000   :
+                case MSSQL2000 :
                     jdbcClass = "com.microsoft.jdbc.sqlserver.SQLServerDriver";
                     Class.forName(jdbcClass);
                     break;
-                case SQL2005   :
+                case SQLSERVER :
                     jdbcClass = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
                     Class.forName(jdbcClass);
                     break;
@@ -744,13 +759,22 @@ public class DBInfo {
                     }
                     break;
                 case MYSQL     :
-                    try {
-                        jdbcClass = "com.mysql.jdbc.Driver";
+                	try {
+                        jdbcClass = "com.mysql.cj.jdbc.Driver";
                         Class.forName(jdbcClass);
-                    } catch(ClassNotFoundException ex) {
-                        jdbcClass = "org.gjt.mm.mysql.Driver";
-                        Class.forName(jdbcClass);
-                    }
+                	} catch(ClassNotFoundException ex) {
+	                    try {
+	                        jdbcClass = "com.mysql.jdbc.Driver";
+	                        Class.forName(jdbcClass);
+	                    } catch(ClassNotFoundException ex2) {
+	                        jdbcClass = "org.gjt.mm.mysql.Driver";
+	                        Class.forName(jdbcClass);
+	                    }
+                	}
+                    break;
+                case MARIADB     :
+                    jdbcClass = "org.mariadb.jdbc.Driver";
+                    Class.forName(jdbcClass);
                     break;
                 case POSTGRE   :
                     try {
@@ -781,12 +805,13 @@ public class DBInfo {
             DebugLogger.logln("Successfully loaded JDBC Driver Class : " + jdbcClass, DebugLogger.INFO);
         } catch(Exception e) {
             DebugLogger.logln("Failed to load JDBC Driver Class : " + e.getMessage(), DebugLogger.ERROR);
-            printSupportDrivers();
+            logln("Failed to load JDBC Driver Class for " + DBMSName[type], ToolLogger.ERROR);
             System.exit(-1);
         }
 
         logln("JDBC Driver Class: " + jdbcClass, ToolLogger.INFO);
     }
+
 
     public String getLibraryNames(List<String> l) {
         StringBuffer sb = new StringBuffer("");
@@ -805,10 +830,11 @@ public class DBInfo {
             case TIBERO    :
             case ALTIBASE  :
             	query = "SELECT 1 FROM DUAL"; break;
-            case SQL2000   :
-            case SQL2005   :
+            case MSSQL2000 :
+            case SQLSERVER :
             case POSTGRE   :
             case MYSQL     :
+            case MARIADB   :
             	query = "SELECT 1"; break;
             case SYBASE    :
             	query = "SELECT getdate()"; break;
@@ -833,9 +859,9 @@ public class DBInfo {
         if(obj == null) {
             if(type == ORACLE || type == TIBERO)
                 query = "select TABLE_NAME from USER_TABLES";
-            else if(type == SQL2000 || type == SQL2005)
+            else if(type == MSSQL2000 || type == SQLSERVER)
                 query = "select TABLE_NAME from INFORMATION_SCHEMA.TABLES";
-            else if(type == MYSQL)
+            else if(type == MYSQL || type == MARIADB)
                 query = "show tables";
         } else {
             if(type == ORACLE || type == TIBERO) {
@@ -872,9 +898,9 @@ public class DBInfo {
 
         if(type == ORACLE || type == TIBERO)
             query = "select * from " + table + "  where rownum = 1";
-        else if(type == SQL2000 || type == SQL2005)
+        else if(type == MSSQL2000 || type == SQLSERVER)
             query = "select top 1 * from " + table;
-        else if(type == MYSQL)
+        else if(type == MYSQL || type == MARIADB)
             query = "select * from " + table + " limit 1";
 
         return query;
@@ -915,9 +941,10 @@ public class DBInfo {
             switch(type) {
                 case ORACLE    :
                 case TIBERO    :
-                case SQL2000   :
-                case SQL2005   :
+                case MSSQL2000 :
+                case SQLSERVER :
                 case MYSQL     :
+                case MARIADB    :
                     def = "EUC-KR";
                     break;
                 case SYBASE    :
@@ -932,12 +959,13 @@ public class DBInfo {
         } else {
             switch(type) {
                 case MYSQL     :
+                case MARIADB   :
                     def = "EUC-KR";
                     break;
                 case ORACLE    :
                 case TIBERO    :
-                case SQL2000   :
-                case SQL2005   :
+                case MSSQL2000 :
+                case SQLSERVER :
                 case SYBASE    :
                 case INFORMIX  :
                 case DB2       :
@@ -994,25 +1022,6 @@ public class DBInfo {
         logln("     - IN : " + inCharset);
         logln("     - OUT : " + outCharset);
         logln("");
-    }
-
-
-    public void printSupportDrivers() {
-        logln("JDBC Driver should be placed in current directory.\n", ToolLogger.ERROR);
-        logln("***** Supported JDBC Driver *****", ToolLogger.INFO);
-        logln("Oracle        : " + getLibraryNames(jdbclibs.get(ORACLE)),    ToolLogger.INFO);
-        logln("Tibero        : " + getLibraryNames(jdbclibs.get(TIBERO)),    ToolLogger.INFO);
-        logln("MS-SQL 2000   : " + getLibraryNames(jdbclibs.get(SQL2000)),   ToolLogger.INFO);
-        logln("MS-SQL 2005   : " + getLibraryNames(jdbclibs.get(SQL2005)),   ToolLogger.INFO);
-        logln("Sybase        : " + getLibraryNames(jdbclibs.get(SYBASE)),    ToolLogger.INFO);
-        logln("Informix      : " + getLibraryNames(jdbclibs.get(INFORMIX)),  ToolLogger.INFO);
-        logln("DB2           : " + getLibraryNames(jdbclibs.get(DB2)),       ToolLogger.INFO);
-        logln("MySQL         : " + getLibraryNames(jdbclibs.get(MYSQL)),     ToolLogger.INFO);
-        logln("PostgreSQL    : " + getLibraryNames(jdbclibs.get(POSTGRE)),   ToolLogger.INFO);
-        logln("ALTIBASE      : " + getLibraryNames(jdbclibs.get(ALTIBASE)),  ToolLogger.INFO);
-        logln("UNISQL        : " + getLibraryNames(jdbclibs.get(UNISQL)),    ToolLogger.INFO);
-        logln("HSQLDB        : " + getLibraryNames(jdbclibs.get(HSQL)),      ToolLogger.INFO);
-        logln("POINTBASE     : " + getLibraryNames(jdbclibs.get(POINTBASE)), ToolLogger.INFO);
     }
 
 

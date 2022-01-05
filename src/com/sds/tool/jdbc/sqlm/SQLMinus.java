@@ -44,7 +44,7 @@ public class SQLMinus {
     private static final String HEADING = "HEADING";
     private static final String WRAPPED = "WRAPPED";
     private static final String PRODUCT = "SQL*Minus";
-    private static final String VERSION = "1.3.0";
+    private static final String VERSION = "1.3.2";
     private static final String DEBUG_FILE = "./sqlm_dbg.log";
 
     private DBInfo dbinfo = new DBInfo();
@@ -62,16 +62,17 @@ public class SQLMinus {
     private long start = 0L;
     private int pageSize = 24;
     private int lineSize = 80;
-    private int checkSize = 1000;
+    private int checkRows = 1000;
     private int timeOut = 60;
     private int checkConnIdleTime = 5;
     private int checkConnMethod = RetainableConnection.CheckType.ALL;
+    private int defaultAutoCommit = RetainableConnection.CommitMode.UNKNOWN;
+    private int currentAutoCommit = RetainableConnection.CommitMode.EXPLICIT;
     private boolean showHead = true;
     private boolean showTiming = false;
     private boolean showTime = false;
     private boolean scanVar = true;
-    private boolean checkResultSet = true;
-    private boolean commitOnExit = true;
+    private boolean commitOnExit = false;
     private boolean loop = true;
     private boolean scriptOnStart = false;
     private boolean scriptProcessing = false;
@@ -217,16 +218,17 @@ public class SQLMinus {
             if( rs != null ) try { rs.close(); } catch(Exception e) {};
             if( rcon != null ) {
                 try {
-                    if(commitOnExit) {
-                        rcon.commit();
-                        logln("\nCommit complete.\n", ToolLogger.INFO);
-                    } else {
-                        rcon.rollback();
-                        logln("\nRollback complete.\n", ToolLogger.INFO);
-                    }
+                	if(currentAutoCommit == RetainableConnection.CommitMode.EXPLICIT) {
+	                    if(commitOnExit) {
+	                        rcon.commit();
+	                        logln("\nCommit complete.\n", ToolLogger.INFO);
+	                    } else {
+	                        rcon.rollback();
+	                        logln("\nRollback complete.\n", ToolLogger.INFO);
+	                    }
+                	}
                     log("Disconnected from " + rcon.getMetaData().getDatabaseProductVersion() + "\n", ToolLogger.INFO);
                 } catch(Exception e) {};
-                try { rcon.setAutoCommit(true); } catch(Exception e) {};
                 try { rcon.close(); } catch(Exception e) {};
                 rcon = null;
             }
@@ -297,7 +299,10 @@ public class SQLMinus {
                     logln("Connected.", ToolLogger.RESULT);
                     logln("Connection(" + rcon + ")[" + dbinfo.getUserName() + "] : " + (System.currentTimeMillis() - start) + " ms", ToolLogger.INFO);
                 }
-                rcon.setAutoCommit(false);
+                defaultAutoCommit = rcon.getAutoCommit() ? RetainableConnection.CommitMode.AUTO : RetainableConnection.CommitMode.EXPLICIT;
+                if(currentAutoCommit != RetainableConnection.CommitMode.DEFAULT) {
+                	rcon.setAutoCommit(currentAutoCommit==RetainableConnection.CommitMode.AUTO);
+                }
             } catch(SQLException se) {
                 logln(se.getMessage().trim(), ToolLogger.ERROR);
                 DebugLogger.logln("Failed to use the connection : " + se.getMessage(), DebugLogger.ERROR);                
@@ -556,7 +561,7 @@ public class SQLMinus {
             logln(se.getMessage().trim(), ToolLogger.ERROR);
         }
 
-        if(ToolLogger.getSilent() == false && checkResultSet && rowCount > checkSize) {
+        if(ToolLogger.getSilent() == false && checkRows > 0 && rowCount > checkRows) {
             String isCont = "";
             boolean first = true;
             while(!isCont.equals("y") && !isCont.equals("n")) {
@@ -1640,31 +1645,35 @@ public class SQLMinus {
             logln(" SET");
             logln(" ---");
             logln("");
-            logln(" Sets a system variable to alter the SQL*Minus environment settings");
-            logln(" for your current session, for example:");
-            logln("     - display width for data");
-            logln("     - enabling or disabling printing of column headings");
-            logln("     - number of lines per page");
-            logln("     - number of seconds waiting for executing query");
-            logln("     - turn on checking rows of result");
-            logln("     - turn on checking connection by check query");
-            logln("     - number of seconds waiting for check query");
+            logln(" Sets a system variable to alter the SQL*Minus environment settings for your current session.");
+            logln(" Following is the list of available variable.");
+            logln("     - HEADING : to print of column headings");
+            logln("     - PAGESIZE : to set the number of lines per page");
+            logln("     - LINESIZE : to set display width for data");
+            logln("     - TIME : to show current time at prompt");
+            logln("     - TIMING : to print query execution time in seconds");
+            logln("     - TIMEOUT : to set timeout in seconds waiting for executing query");
+            logln("     - SCANVAR : to scan variables in query");
+            logln("     - CHECKROWS : to set the number of rows to check result set");
+            logln("     - CHECKCONN : how to check the connection by check query");
+            logln("     - CHECKCONN_IDLETIME : to set check query execution interval in seconds");
+            logln("     - COMMITMODE : how to commit changes");
             logln("");
             logln(" SET system_variable value");
             logln("");
             logln(" where system_variable and value represent one of the following clauses:");
             logln("");
+            logln("   HEA[DING] {ON|OFF}");
             logln("   PAGES[IZE] {24|n}");
             logln("   LIN[ESIZE] {80|n}");
-            logln("   CHECKS[IZE] {1000|n}");
-            logln("   TIMEO[UT] {60|n}");
-            logln("   HEA[DING] {ON|OFF}");
-            logln("   TIMI[NG] {OFF|ON}");
             logln("   TI[ME] {OFF|ON}");
-            logln("   SCAN {ON|OFF}");
-            logln("   CHECK {ON|OFF}");
+            logln("   TIMI[NG] {OFF|ON}");
+            logln("   TIMEO[UT] {60|n}");
+            logln("   SCAN[VAR] {ON|OFF}");
+            logln("   CHECKROWS {0|n}");
             logln("   CHECKCONN {OFF|FIRST_CONNECT|PRE_REQUEST|IDLE_CHECK|ALL}");
             logln("   CHECKCONN_I[DLETIME] {5|n}");
+            logln("   COMMIT[MODE] {AUTO|EXPLICIT|DEFAULT}");
             logln("");
         } else if(Util.isIncludeEquals(topic.toLowerCase(), "col", "umn")) {
             logln("");
@@ -1895,7 +1904,7 @@ public class SQLMinus {
         logln("JDBC Driver");
         logln("-----------");
         logln("  Need the JDBC Driver that is offered from DBMS vendor.");
-        logln("  JDBC Driver should be placed in current directory.");
+        logln("  JDBC Driver should be placed in current directory or run SQLMinus with driver parameter.");
         logln("");
 
         System.exit(0);
@@ -2467,198 +2476,18 @@ public class SQLMinus {
 
                 StringTokenizer st = new StringTokenizer(temp.trim().toLowerCase(), " ");
                 if(st.countTokens() == 1) {
-                    logln("PAGESIZE\t\t" + pageSize);
-                    logln("LINESIZE\t\t" + lineSize);
-                    logln("CHECKSIZE\t\t" + checkSize);
-                    logln("TIMEOUT\t\t\t" + timeOut);
-                    logln("HEADING\t\t\t" + ((showHead)?"ON":"OFF"));
-                    logln("TIMING\t\t\t" + ((showTiming)?"ON":"OFF"));
-                    logln("TIME\t\t\t" + ((showTime)?"ON":"OFF"));
-                    logln("SCAN\t\t\t" + ((scanVar)?"ON":"OFF"));
-                    logln("CHECK\t\t\t" + ((checkResultSet)?"ON":"OFF"));
-                    logln("CHECKCONN\t\t" + RetainableConnection.CheckType.getNameByType(checkConnMethod));
-                    logln("CHECKCONN_IDLETIME\t" + checkConnIdleTime);
-                    return true;
-                }
-                st.nextToken();
-                String subcmd;
-                String p_size = null;
-                String l_size = null;
-                String c_size = null;
-                String t_out = null;
-                String s_head = null;
-                String t_ming = null;
-                String t_me = null;
-                String s_var = null;
-                String r_check = null;
-                String c_method = null;
-                String c_idle = null;
-                boolean read = true;
-                while(st.hasMoreTokens() && read) {
-                    subcmd = st.nextToken();
-                    if(Util.isIncludeEquals(subcmd, "pages", "ize")) {
-                        String size = null;
-                        size = (st.hasMoreTokens())?st.nextToken():"0";
-                        if(!Util.isNumber(size)) {
-                            logln("pagesize option not a valid number", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = null;
-                            read = false;
-                        } else {
-                            p_size = size;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "lin", "esize")) {
-                        String size = null;
-                        size = (st.hasMoreTokens())?st.nextToken():null;
-                        if(size == null || (size != null && Util.isNumber(size) && Integer.parseInt(size) < 1)) {
-                            logln("linesize option out of range (1 through 32767)", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else if(!Util.isNumber(size)) {
-                            logln("linesize option not a valid number", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            l_size = size;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "checks", "ize")) {
-                        String size = null;
-                        size = (st.hasMoreTokens())?st.nextToken():null;
-                        if(size == null || (size != null && Util.isNumber(size) && Integer.parseInt(size) < 1)) {
-                            logln("checksize option out of range", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else if(!Util.isNumber(size)) {
-                            logln("checksize option not a valid number", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            c_size = size;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "timeo", "ut")) {
-                        String to = null;
-                        to = (st.hasMoreTokens())?st.nextToken():null;
-                        if(to == null || !Util.isNumber(to)) {
-                            logln("timeout option not a valid number", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            t_out = to;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "hea", "ding")) {
-                        String heading = null;
-                        heading = (st.hasMoreTokens())?st.nextToken():null;
-                        if(heading == null || (!heading.equalsIgnoreCase("on") && !heading.equalsIgnoreCase("off"))) {
-                            logln("heading must be set to ON or OFF", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            s_head = heading;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "timi", "ng")) {
-                        String timing = null;
-                        timing = (st.hasMoreTokens())?st.nextToken():null;
-                        if(timing == null || (!timing.equalsIgnoreCase("on") && !timing.equalsIgnoreCase("off"))) {
-                            logln("timing must be set to ON or OFF", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            t_ming = timing;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "ti", "me")) {
-                        String time = null;
-                        time = (st.hasMoreTokens())?st.nextToken():null;
-                        if(time == null || (!time.equalsIgnoreCase("on") && !time.equalsIgnoreCase("off"))) {
-                            logln("time must be set to ON or OFF", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            t_me = time;
-                        }
-                    } else if(subcmd.equals("scan")) {
-                        String scan = null;
-                        scan = (st.hasMoreTokens())?st.nextToken():null;
-                        if(scan == null || (!scan.equalsIgnoreCase("on") && !scan.equalsIgnoreCase("off"))) {
-                            logln("scan must be set to ON or OFF", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            s_var = scan;
-                        }
-                    } else if(subcmd.equals("check")) {
-                        String check = null;
-                        check = (st.hasMoreTokens())?st.nextToken():null;
-                        if(check == null || (!check.equalsIgnoreCase("on") && !check.equalsIgnoreCase("off"))) {
-                            logln("check must be set to ON or OFF", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            r_check = check;
-                        }
-                    } else if(subcmd.equals("checkconn")) {
-                        String connmethod = null;
-                        connmethod = (st.hasMoreTokens())?st.nextToken():null;
-                        if(connmethod == null || RetainableConnection.CheckType.getTypeByName(connmethod) < 0) {
-                            logln("checkconn must be set to one of OFF,FIRST_CONNECT,PRE_REQUEST,IDLE_CHECK,ALL", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                        	c_method = connmethod;
-                        }
-                    } else if(Util.isIncludeEquals(subcmd, "checkconn_i", "dletime")) {
-                        String connidle = null;
-                        connidle = (st.hasMoreTokens())?st.nextToken():null;
-                        if(connidle == null || !Util.isNumber(connidle)) {
-                            logln("checkconn_idletime option not a valid number", ToolLogger.ERROR);
-                            p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                            read = false;
-                        } else {
-                            c_idle = connidle;
-                        }
-                    } else {
-                        logln("unknown SET option \"" + subcmd + "\"", ToolLogger.ERROR);
-                        p_size = l_size = c_size = t_out = s_head = t_ming = t_me = s_var = r_check = c_method = c_idle = null;
-                        read = false;
+                	printSettings();
+                } else {
+                	st.nextToken();
+                    String subcmd = st.nextToken();
+                    List<String> l = new ArrayList<String>();
+                    while(st.hasMoreTokens()) {
+                    	String token = st.nextToken().trim();
+                    	l.add(token);
                     }
+                	saveSetting(subcmd, l);
                 }
-
-                if(p_size!=null) {
-                    pageSize = Integer.parseInt(p_size);
-                }
-                if(l_size!=null) {
-                    lineSize = Integer.parseInt(l_size);
-                }
-                if(c_size!=null) {
-                    checkSize = Integer.parseInt(c_size);
-                }
-                if(t_out!=null) {
-                    timeOut = Integer.parseInt(t_out);
-                }
-                if(s_head!=null) {
-                    showHead = (s_head.trim().toLowerCase().equals("on"))?true:false;
-                }
-                if(t_ming!=null) {
-                    showTiming = (t_ming.trim().toLowerCase().equals("on"))?true:false;
-                }
-                if(t_me!=null) {
-                    showTime = (t_me.trim().toLowerCase().equals("on"))?true:false;
-                }
-                if(s_var!=null) {
-                    scanVar = (s_var.trim().toLowerCase().equals("on"))?true:false;
-                }
-                if(r_check!=null) {
-                    checkResultSet = (r_check.trim().toLowerCase().equals("on"))?true:false;
-                }
-                if(c_method!=null) {
-                    checkConnMethod = RetainableConnection.CheckType.getTypeByName(c_method);
-                    rcon.setCheckQueryType(checkConnMethod);
-                    rcon.resetCheckQuery();
-                }
-                if(c_idle!=null) {
-                    checkConnIdleTime = Integer.parseInt(c_idle);
-                    rcon.setCheckQueryInterval(checkConnIdleTime);
-                    rcon.resetCheckQuery();
-                }
-
+                
                 return true;
 
             } else if(action.equals("column")) {
@@ -2801,6 +2630,8 @@ public class SQLMinus {
             if(rcon != null) {
 
                 query = (scanVar)?replaceQueryVariable(query.trim()):query.trim();
+                query = query.endsWith(";")?query.substring(0,query.length()-1):query;
+                query = query.trim();
 
                 if(query.length() > 0) {
 
@@ -2824,9 +2655,7 @@ public class SQLMinus {
                             rcon.setQueryTimeout(timeOut);
                         }
                         start = System.currentTimeMillis();
-                        String first_line = query.split("\n")[0];
-                        first_line = first_line.replaceAll("^/\\*.+\\*/", "").trim();
-
+                        
                         QueryResult query_result = rcon.execute(query);
                         if(query_result.isSelect()) {
                             rs = query_result.getResultSet();
@@ -2867,7 +2696,195 @@ public class SQLMinus {
         }
         return true;
     }
+    
+    private void printSettings() {
+    	logln("HEADING\t\t\t" + ((showHead)?"ON":"OFF"));
+        logln("PAGESIZE\t\t" + pageSize);
+        logln("LINESIZE\t\t" + lineSize);
+        logln("TIME\t\t\t" + ((showTime)?"ON":"OFF"));
+        logln("TIMING\t\t\t" + ((showTiming)?"ON":"OFF"));
+        logln("TIMEOUT\t\t\t" + timeOut);
+        logln("SCANVAR\t\t\t" + ((scanVar)?"ON":"OFF"));
+        logln("CHECKROWS\t\t" + (checkRows>0?checkRows:"OFF"));
+        logln("CHECKCONN\t\t" + RetainableConnection.CheckType.getNameByType(checkConnMethod));
+        logln("CHECKCONN_IDLETIME\t" + checkConnIdleTime);
+        logln("COMMITMODE\t\t" + RetainableConnection.CommitMode.getNameByMode(currentAutoCommit) + 
+        		((currentAutoCommit==RetainableConnection.CommitMode.DEFAULT)?("("+RetainableConnection.CommitMode.getNameByMode(defaultAutoCommit)+")"):""));
+    }
 
+    private void saveSetting(String subcmd, List<String> args) {
+	    if(Util.isIncludeEquals(subcmd, "hea", "ding")) {
+	        if(args.size() == 0) {
+	        	logln("Need more arguments.", ToolLogger.ERROR);
+	        } else if(args.size() > 1) {
+	        	logln("Too many arguments.", ToolLogger.ERROR);
+	        } else {
+	            String heading = args.get(0);
+	        	if(!heading.equalsIgnoreCase("on") && !heading.equalsIgnoreCase("off")) {
+	                logln("heading must be set to ON or OFF", ToolLogger.ERROR);
+	            } else {
+	                showHead = (heading.toLowerCase().equals("on"))?true:false;
+	            }
+	        }
+	    } else if(Util.isIncludeEquals(subcmd, "pages", "ize")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String size = args.get(0);
+            	if(!Util.isNumber(size)) {
+	                logln("pagesize argument not a valid number", ToolLogger.ERROR);
+            	} else if(Integer.parseInt(size) < 1) {
+                    logln("pagesize argument out of range (greater than 0)", ToolLogger.ERROR);
+	            } else {
+	                pageSize = Integer.parseInt(size);
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "lin", "esize")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String size = args.get(0);
+            	if(!Util.isNumber(size)) {
+            		logln("linesize argument not a valid number", ToolLogger.ERROR);
+            	} else if(Integer.parseInt(size) < 1 || Integer.parseInt(size) > 32767) {
+                    logln("linesize argument out of range (1 through 32767)", ToolLogger.ERROR);
+	            } else {
+	                lineSize = Integer.parseInt(size);
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "ti", "me")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String time = args.get(0);
+            	if(!time.equalsIgnoreCase("on") && !time.equalsIgnoreCase("off")) {
+                    logln("time must be set to ON or OFF", ToolLogger.ERROR);
+	            } else {
+	                showTime = (time.toLowerCase().equals("on"))?true:false;
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "timi", "ng")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String timing = args.get(0);
+            	if(!timing.equalsIgnoreCase("on") && !timing.equalsIgnoreCase("off")) {
+                    logln("timing must be set to ON or OFF", ToolLogger.ERROR);
+	            } else {
+	                showTiming = (timing.toLowerCase().equals("on"))?true:false;
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "timeo", "ut")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String to = args.get(0);
+            	if(!Util.isNumber(to)) {
+                    logln("timeout argument not a valid number", ToolLogger.ERROR);
+            	} else if(Integer.parseInt(to) < 1) {
+                    logln("timeout argument out of range (greater than 0)", ToolLogger.ERROR);
+	            } else {
+	                timeOut = Integer.parseInt(to);
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "scan", "var")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String scan = args.get(0);
+            	if(!scan.equalsIgnoreCase("on") && !scan.equalsIgnoreCase("off")) {
+                    logln("scanvar must be set to ON or OFF", ToolLogger.ERROR);
+	            } else {
+	                scanVar = (scan.trim().toLowerCase().equals("on"))?true:false;
+	            }
+            }
+        } else if(subcmd.equals("checkrows")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String size = args.get(0);
+                if(size.equalsIgnoreCase("off")) {
+                	checkRows = 0;
+                } else if(!Util.isNumber(size)) {
+                    logln("checkrows argument not a valid number", ToolLogger.ERROR);
+	            } else {
+	                checkRows = Integer.parseInt(size);
+	            }
+            }
+        } else if(subcmd.equals("checkconn")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String connmethod = args.get(0);
+            	if(RetainableConnection.CheckType.getTypeByName(connmethod) < 0) {
+                    logln("checkconn must be set to one of OFF,FIRST_CONNECT,PRE_REQUEST,IDLE_CHECK,ALL", ToolLogger.ERROR);
+	            } else {
+	                checkConnMethod = RetainableConnection.CheckType.getTypeByName(connmethod);
+	                rcon.setCheckQueryType(checkConnMethod);
+	                rcon.resetCheckQuery();
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "checkconn_i", "dletime")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String connidle = args.get(0);
+            	if(!Util.isNumber(connidle)) {
+                    logln("checkconn_idletime argument not a valid number", ToolLogger.ERROR);
+	            } else {
+	                checkConnIdleTime = Integer.parseInt(connidle);
+	                rcon.setCheckQueryInterval(checkConnIdleTime);
+	                rcon.resetCheckQuery();
+	            }
+            }
+        } else if(Util.isIncludeEquals(subcmd, "commit", "mode")) {
+            if(args.size() == 0) {
+            	logln("Need more arguments.", ToolLogger.ERROR);
+            } else if(args.size() > 1) {
+            	logln("Too many arguments.", ToolLogger.ERROR);
+            } else {
+                String commitmode = args.get(0);
+            	if(RetainableConnection.CommitMode.getModeByName(commitmode) < 0) {
+                    logln("checkconn must be set to one of AUTO,EXPLICIT,DEFAULT", ToolLogger.ERROR);
+	            } else {
+	            	currentAutoCommit = RetainableConnection.CommitMode.getModeByName(commitmode);
+	            	boolean autocommit = false;
+	            	if(currentAutoCommit == RetainableConnection.CommitMode.DEFAULT) {
+	            		autocommit = defaultAutoCommit == RetainableConnection.CommitMode.AUTO;
+	            	} else {
+	            		autocommit = currentAutoCommit == RetainableConnection.CommitMode.AUTO;
+	            	}
+	            	try {
+	            		rcon.setAutoCommit(autocommit);
+	            	} catch(SQLException se) {
+	                    logln("Failed to set AutoCommit mode for the connection.", ToolLogger.ERROR);
+	                    DebugLogger.logln("Failed to set AutoCommit mode for the connection : " + se.getMessage(), DebugLogger.ERROR);                
+	            	}
+	            }
+            }        
+        } else {
+            logln("unknown SET option \"" + subcmd + "\"", ToolLogger.ERROR);
+        }
+    }
+    
     @SuppressWarnings("serial")
 	public class NeedMoreQueryException extends RuntimeException {
     	public NeedMoreQueryException(String msg) {

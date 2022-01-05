@@ -332,11 +332,11 @@ public class Util {
         char c;
         for(int i = 0; i < str.length(); i++) {
             c = str.charAt(i);
-            if(Character.isDigit(c)) { // ����
+            if(Character.isDigit(c)) {
                 sorts[i] = 'N';
-            } else if(c < 127) { // ���ĺ�
+            } else if(c < 127) {
                 sorts[i] = 'E';
-            } else if(c > 255) { // �ѱ�
+            } else if(c > 255) {
                 sorts[i] = 'K';
             }
         }
@@ -362,24 +362,24 @@ public class Util {
         char[] sorts = getCharSorts(str);
         for(int i = 0; i < sorts.length; i++) {
             sum += (sorts[i]=='N' || sorts[i]=='E')?1:2;
-            if(sum+1 == size) { // �� ĭ ���ڶ� ��
-                if(i < sorts.length-1) { // ��������
-                    if(sp == split) { // ���ϴ� �κ�
-                        if(sorts[i+1] != 'K') { // ������ �ѱ��� ¥��
+            if(sum+1 == size) {
+                if(i < sorts.length-1) {
+                    if(sp == split) {
+                        if(sorts[i+1] != 'K') {
                             korIdx++;
                         }
                         return ((isInit)?initIdx:korIdx);
                     } else {
-                        if(sorts[i+1] == 'K') { // ������ �α��� ¥��
+                        if(sorts[i+1] == 'K') {
                             sum = 0;
                             sp++;
                             initIdx = korIdx;
                         }
                     }
-                } else { // �������̸�
+                } else {
                     return ((isInit)?initIdx:korIdx);
                 }
-            } else if(sum == size) { // �� ���� ��
+            } else if(sum == size) {
                 if(sp == split) {
                     return ((isInit)?initIdx:korIdx);
                 }

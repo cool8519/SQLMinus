@@ -12,6 +12,7 @@ import java.util.Properties;
 
 import com.sds.tool.util.DebugLogger;
 import com.sds.tool.util.ObjectDataUtil;
+import com.sds.tool.util.StringUtil;
 
 
 public class RetainableConnection {
@@ -25,7 +26,29 @@ public class RetainableConnection {
 	private int checkType = 0;
 	private CheckThread checkThread = null;
 	
+	public static class CommitMode {
+		public static final int UNKNOWN       = -1;
+		public static final int DEFAULT       = 0;
+		public static final int AUTO          = 1;
+		public static final int EXPLICIT      = 2;
+		public static String getNameByMode(int mode) {
+			switch(mode) {
+				case 0: return "DEFAULT";
+				case 1: return "AUTO";
+				case 2: return "EXPLICIT";
+				default: return "UNKNOWN";
+			}
+		}
+		public static int getModeByName(String name) {
+			if("DEFAULT".equalsIgnoreCase(name)) return DEFAULT;
+			else if("AUTO".equalsIgnoreCase(name)) return AUTO;
+			else if("EXPLICIT".equalsIgnoreCase(name)) return EXPLICIT;
+			else return -1;
+		}
+	}
+	
 	public static class CheckType {
+		public static final int UNKNOWN       = -1;
 		public static final int OFF           = 0;
 		public static final int FIRST_CONNECT = 1;
 		public static final int IDLE_CHECK    = 2;
@@ -106,7 +129,11 @@ public class RetainableConnection {
 		}
         DebugLogger.logln("Set CheckQuery Timeout : " + timeout, DebugLogger.INFO);
 	}
-	
+
+	public boolean getAutoCommit() throws SQLException {
+		return con.getAutoCommit();
+	}
+
 	public void setAutoCommit(boolean autocommit) throws SQLException {
 		con.setAutoCommit(autocommit);
         DebugLogger.logln("Set AutoCommit : " + autocommit, DebugLogger.INFO);
@@ -177,7 +204,7 @@ public class RetainableConnection {
 		}
 		QueryResult result = new QueryResult();
 		result.executeAndSet(query, stmt!=null?stmt:pstmt);
-        DebugLogger.logln("Executed " + (result.isSelect()?"Select":"Update") + " Query : \"" + query + "\"", DebugLogger.INFO);
+        DebugLogger.logln("Executed " + (result.isSelect()?"Select":"Update") + " Query : \"" + StringUtil.replaceNewlineWithSpace(query) + "\"", DebugLogger.INFO);
 
 		resetThreadTimer();
 		return result;
@@ -195,7 +222,7 @@ public class RetainableConnection {
 		} else if(pstmt != null) {
 			rs = pstmt.executeQuery(query);
 		}
-        DebugLogger.logln("Executed Select Query : \"" + query + "\"", DebugLogger.INFO);
+        DebugLogger.logln("Executed Select Query : \"" + StringUtil.replaceNewlineWithSpace(query) + "\"", DebugLogger.INFO);
 
 		resetThreadTimer();
 		return rs;
@@ -213,7 +240,7 @@ public class RetainableConnection {
 		} else if(pstmt != null) {
 			i = pstmt.executeUpdate(query);
 		}
-        DebugLogger.logln("Executed Update Query : \"" + query + "\"", DebugLogger.INFO);
+        DebugLogger.logln("Executed Update Query : \"" + StringUtil.replaceNewlineWithSpace(query) + "\"", DebugLogger.INFO);
 
         resetThreadTimer();
 		return i;
