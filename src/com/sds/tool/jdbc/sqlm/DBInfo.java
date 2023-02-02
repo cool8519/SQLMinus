@@ -5,13 +5,18 @@ import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.Charset;
+import java.sql.Driver;
+import java.sql.DriverManager;
 import java.util.ArrayList;
 import java.util.Hashtable;
 import java.util.List;
 import java.util.StringTokenizer;
 import java.util.Vector;
 
+import com.sds.tool.jdbc.sqlm.loading.DriverShim;
+import com.sds.tool.jdbc.sqlm.loading.MyClassloader;
 import com.sds.tool.jdbc.sqlm.util.Util;
+import com.sds.tool.util.ClassLoaderUtil;
 import com.sds.tool.util.DebugLogger;
 import com.sds.tool.util.ObjectDataUtil;
 import com.sds.tool.util.ToolLogger;
@@ -63,6 +68,8 @@ public class DBInfo {
     private String currentDir = System.getProperty("user.dir");
     private Hashtable<String,String> params = new Hashtable<String,String>();
     private Vector<List<String>> jdbcdrivers = new Vector<List<String>>();
+    private URLClassLoader loader;
+    private String jdbcClass;
 
 
     public DBInfo() {
@@ -336,8 +343,13 @@ public class DBInfo {
     private List<String> addJDBCToClasspath(List<String> l) {
     	List<String> lst = new ArrayList<String>();
     	try {
-    		final URLClassLoader loader = (URLClassLoader)ClassLoader.getSystemClassLoader();
-    		final Method method = URLClassLoader.class.getDeclaredMethod("addURL", new Class[]{URL.class});
+    		Float vm_version = Float.parseFloat(System.getProperty("java.specification.version"));
+    		if(vm_version <= 1.8F) {
+    			loader = (URLClassLoader)ClassLoader.getSystemClassLoader();
+    		} else {
+    			loader = new MyClassloader(new URL[0], this.getClass().getClassLoader());
+    		}
+			final Method method = URLClassLoader.class.getDeclaredMethod("addURL", new Class[]{URL.class});
     		method.setAccessible(true);
     		for(String filename : l) {
 				File f = new File(filename);
@@ -367,12 +379,13 @@ public class DBInfo {
             for(int j = 0; j < l.size(); j++) {
                 String drv = (String)l.get(j);
                 try {
-                	Class.forName(drv);
+                	Class.forName(drv, true, loader);
                 	DebugLogger.logln("Successfully loaded JDBC driver : " + drv, DebugLogger.DEBUG);
                     idx.add(new Integer(i));
                     j = l.size();
-                } catch(Exception e) {               	
+                } catch(Throwable t) {               	
                 	DebugLogger.logln("Failed to load JDBC driver : " + drv, DebugLogger.DEBUG);
+                	DebugLogger.logln("Exception : ", t, DebugLogger.DEBUG);
                 }
             }        	
         }
@@ -717,92 +730,93 @@ public class DBInfo {
     
     public void loadJDBCDriver() {
         DebugLogger.logln("Loading JDBC Driver Class.", DebugLogger.DEBUG);
-        String jdbcClass = "";
+        Driver driver = null;
         try {
             switch(type) {
                 case ORACLE    :
                     jdbcClass = "oracle.jdbc.driver.OracleDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case TIBERO    :
                     try {
                         jdbcClass = "com.tmax.tibero.jdbc.TbDriver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     } catch(ClassNotFoundException ex) {
                         jdbcClass = "com.tmax.jdbc.tibero.TbrDriver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     }
                     break;
                 case MSSQL2000 :
                     jdbcClass = "com.microsoft.jdbc.sqlserver.SQLServerDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case SQLSERVER :
                     jdbcClass = "com.microsoft.sqlserver.jdbc.SQLServerDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case SYBASE    :
                     jdbcClass = "com.sybase.jdbc2.jdbc.SybDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case INFORMIX  :
                     jdbcClass = "com.informix.jdbc.IfxDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case DB2       :
                     try {
                         jdbcClass = "com.ibm.db2.jcc.DB2Driver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     } catch(ClassNotFoundException ex) {
                         jdbcClass = "COM.ibm.db2.jdbc.net.DB2Driver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     }
                     break;
                 case MYSQL     :
                 	try {
                         jdbcClass = "com.mysql.cj.jdbc.Driver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                 	} catch(ClassNotFoundException ex) {
 	                    try {
 	                        jdbcClass = "com.mysql.jdbc.Driver";
-	                        Class.forName(jdbcClass);
+	                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
 	                    } catch(ClassNotFoundException ex2) {
 	                        jdbcClass = "org.gjt.mm.mysql.Driver";
-	                        Class.forName(jdbcClass);
+	                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
 	                    }
                 	}
                     break;
                 case MARIADB     :
                     jdbcClass = "org.mariadb.jdbc.Driver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case POSTGRE   :
                     try {
                         jdbcClass = "org.postgresql.Driver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     } catch(ClassNotFoundException ex) {
                         jdbcClass = "postgresql.Driver";
-                        Class.forName(jdbcClass);
+                        driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     }
                     break;
                 case ALTIBASE  :
                     jdbcClass = "Altibase.jdbc.driver.AltibaseDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case UNISQL    :
                     jdbcClass = "unisql.jdbc.driver.UniSQLDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case HSQL      :
                     jdbcClass = "org.hsqldb.jdbcDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
                 case POINTBASE :
                     jdbcClass = "com.pointbase.jdbc.jdbcUniversalDriver";
-                    Class.forName(jdbcClass);
+                    driver = (Driver)Class.forName(jdbcClass, true, loader).newInstance();
                     break;
             }
-            DebugLogger.logln("Successfully loaded JDBC Driver Class : " + jdbcClass, DebugLogger.INFO);
+            DriverManager.registerDriver(new DriverShim(driver));
+            DebugLogger.logln("Successfully loaded JDBC Driver Class : " + ClassLoaderUtil.getPathFromClass(loader, jdbcClass), DebugLogger.INFO);
         } catch(Exception e) {
             DebugLogger.logln("Failed to load JDBC Driver Class : " + e.getMessage(), DebugLogger.ERROR);
             logln("Failed to load JDBC Driver Class for " + DBMSName[type], ToolLogger.ERROR);
@@ -1010,6 +1024,9 @@ public class DBInfo {
         logln(" Current Information");
         logln("------------------------------");
         logln("   DBMS Type : " + DBMSName[type]);
+        logln("   JDBC Driver : ");
+        logln("     - File : " + ClassLoaderUtil.getJarPathFromClass(loader, jdbcClass));
+        logln("     - Class : " + jdbcClass);
         logln("   Connection Info");
         logln("     - IP : " + ((ip.equals(""))?"Unknown":ip));
         logln("     - PORT : " + ((port.equals(""))?"Unknown":port));

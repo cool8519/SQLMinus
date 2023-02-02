@@ -44,7 +44,7 @@ public class SQLMinus {
     private static final String HEADING = "HEADING";
     private static final String WRAPPED = "WRAPPED";
     private static final String PRODUCT = "SQL*Minus";
-    private static final String VERSION = "1.3.2";
+    private static final String VERSION = "1.3.3";
     private static final String DEBUG_FILE = "./sqlm_dbg.log";
 
     private DBInfo dbinfo = new DBInfo();
