@@ -10,8 +10,8 @@ Requirements
 Getting Started
 ---------------
 아래의 두개 버전 중 하나를 다운로드 한다.
-* Windows Executable : [SQLMinus_v1.3.0.exe](https://github.com/cool8519/SQLMinus/raw/master/output/SQLMinus_v1.3.0.exe)
-* Java Archive File : [SQLMinus_v1.3.0.jar](https://github.com/cool8519/SQLMinus/raw/master/output/SQLMinus_v1.3.0.jar)
+* Windows Executable : [SQLMinus_v1.3.3.exe](https://github.com/cool8519/SQLMinus/releases/download/1.3.3/SQLMinus.exe)
+* Java Archive File : [SQLMinus_v1.3.3.jar](https://github.com/cool8519/SQLMinus/releases/download/1.3.3/SQLMinus.jar)
 
 Usage
 ---------------
